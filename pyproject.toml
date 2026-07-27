@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "clay-ops"
+version = "0.1.0"
+description = "Local-only Clay operational control plane"
+requires-python = ">=3.11"
+dependencies = ["jsonschema>=4.23,<5"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<9"]
+
+[project.scripts]
+clay-ops = "clay_ops.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clay_ops"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

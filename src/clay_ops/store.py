@@ -1,0 +1,251 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import sqlite3
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from pathlib import Path
+
+from .policy import ApprovalError
+from .redaction import redact
+
+SCHEMA_VERSION = "1.0.0"
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def canonical(value) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def sanitize(value):
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {str(k): sanitize(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [sanitize(v) for v in value]
+    return value
+
+
+class ImmutableRecordError(RuntimeError):
+    pass
+
+
+class OperationalStore:
+    def __init__(self, path: Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(self.path)
+        self.db.row_factory = sqlite3.Row
+        self._transaction_depth = 0
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA foreign_keys=ON")
+        self._migrate()
+
+    def _migrate(self) -> None:
+        self.db.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS tasks(task_id TEXT PRIMARY KEY, packet TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS runs(run_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, workflow_id TEXT NOT NULL, execution_mode TEXT NOT NULL CHECK(execution_mode IN ('structured','manual/unstructured')), created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS events(event_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, sequence INTEGER NOT NULL, event_type TEXT NOT NULL, status TEXT NOT NULL, actor TEXT NOT NULL, recorded_at TEXT NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, record_hash TEXT NOT NULL, UNIQUE(run_id,sequence));
+            CREATE TABLE IF NOT EXISTS approvals(approval_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, action TEXT NOT NULL, scope TEXT NOT NULL, reason TEXT NOT NULL, requested_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS approval_decisions(decision_id TEXT PRIMARY KEY, approval_id TEXT NOT NULL UNIQUE, decision TEXT NOT NULL CHECK(decision IN ('approved','rejected','changes_requested')), actor TEXT NOT NULL, scope TEXT NOT NULL, reason TEXT, recorded_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS artifacts(artifact_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, relative_path TEXT NOT NULL, sha256 TEXT NOT NULL, kind TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(run_id,relative_path));
+            CREATE TABLE IF NOT EXISTS canon_snapshots(snapshot_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, reference_id TEXT NOT NULL, repository_path TEXT NOT NULL, relative_file_path TEXT NOT NULL, git_commit TEXT NOT NULL, blob_hash TEXT NOT NULL, content_sha256 TEXT NOT NULL, authority_class TEXT NOT NULL, recorded_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS results(result_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, task_id TEXT NOT NULL, payload TEXT NOT NULL, completed INTEGER NOT NULL, created_at TEXT NOT NULL);
+            CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
+            CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
+            CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON approval_decisions BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_DECISIONS'); END;
+            CREATE TRIGGER IF NOT EXISTS decisions_no_delete BEFORE DELETE ON approval_decisions BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_DECISIONS'); END;
+            CREATE TRIGGER IF NOT EXISTS approvals_no_update BEFORE UPDATE ON approvals BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_REQUESTS'); END;
+            CREATE TRIGGER IF NOT EXISTS approvals_no_delete BEFORE DELETE ON approvals BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_REQUESTS'); END;
+            CREATE TRIGGER IF NOT EXISTS completed_results_no_update BEFORE UPDATE ON results WHEN OLD.completed=1 BEGIN SELECT RAISE(ABORT,'IMMUTABLE_COMPLETED_RESULT'); END;
+            CREATE TRIGGER IF NOT EXISTS completed_results_no_delete BEFORE DELETE ON results WHEN OLD.completed=1 BEGIN SELECT RAISE(ABORT,'IMMUTABLE_COMPLETED_RESULT'); END;
+            CREATE TRIGGER IF NOT EXISTS artifacts_no_update BEFORE UPDATE ON artifacts BEGIN SELECT RAISE(ABORT,'IMMUTABLE_ARTIFACTS'); END;
+            CREATE TRIGGER IF NOT EXISTS artifacts_no_delete BEFORE DELETE ON artifacts BEGIN SELECT RAISE(ABORT,'IMMUTABLE_ARTIFACTS'); END;
+            CREATE TRIGGER IF NOT EXISTS snapshots_no_update BEFORE UPDATE ON canon_snapshots BEGIN SELECT RAISE(ABORT,'IMMUTABLE_CANON_SNAPSHOTS'); END;
+            CREATE TRIGGER IF NOT EXISTS snapshots_no_delete BEFORE DELETE ON canon_snapshots BEGIN SELECT RAISE(ABORT,'IMMUTABLE_CANON_SNAPSHOTS'); END;
+            """
+        )
+        self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_decision_per_approval ON approval_decisions(approval_id)")
+        self.db.commit()
+
+    @contextmanager
+    def transaction(self):
+        outermost = self._transaction_depth == 0
+        if outermost:
+            self.db.execute("BEGIN IMMEDIATE")
+        self._transaction_depth += 1
+        try:
+            yield self
+        except Exception:
+            self._transaction_depth -= 1
+            if outermost:
+                self.db.rollback()
+            raise
+        else:
+            self._transaction_depth -= 1
+            if outermost:
+                self.db.commit()
+
+    def _execute(self, sql, params=()):
+        try:
+            cur = self.db.execute(sql, params)
+            if self._transaction_depth == 0:
+                self.db.commit()
+            return cur
+        except sqlite3.IntegrityError as exc:
+            if self._transaction_depth == 0:
+                self.db.rollback()
+            if "IMMUTABLE" in str(exc):
+                raise ImmutableRecordError(str(exc)) from None
+            raise
+
+    def save_task(self, packet):
+        self._execute("INSERT INTO tasks VALUES(?,?,?)", (packet["task_id"], canonical(sanitize(packet)), utc_now()))
+
+    def create_run(self, run_id, task_id, workflow_id, execution_mode="structured"):
+        self._execute("INSERT INTO runs VALUES(?,?,?,?,?)", (run_id, task_id, workflow_id, execution_mode, utc_now()))
+
+    def append_event(self, run_id, event_type, status, payload, actor="agent:clay-ops"):
+        payload = sanitize(payload)
+        standalone = self._transaction_depth == 0
+        if standalone:
+            self.db.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.db.execute("SELECT sequence,record_hash FROM events WHERE run_id=? ORDER BY sequence DESC LIMIT 1", (run_id,)).fetchone()
+            sequence = row["sequence"] + 1 if row else 1
+            previous = row["record_hash"] if row else "GENESIS"
+            event_id = f"event-{uuid.uuid4().hex}"
+            recorded = utc_now()
+            basis = {"schema_version": SCHEMA_VERSION, "event_id": event_id, "run_id": run_id, "sequence": sequence, "event_type": event_type, "status": status, "actor": actor, "recorded_at": recorded, "payload": payload, "previous_hash": previous}
+            basis["record_hash"] = hashlib.sha256(canonical(basis).encode()).hexdigest()
+            self.db.execute("INSERT INTO events VALUES(?,?,?,?,?,?,?,?,?,?)", (event_id, run_id, sequence, event_type, status, actor, recorded, canonical(payload), previous, basis["record_hash"]))
+            if standalone:
+                self.db.commit()
+            return basis
+        except Exception:
+            if standalone:
+                self.db.rollback()
+            raise
+
+    def list_events(self, run_id):
+        rows = self.db.execute("SELECT * FROM events WHERE run_id=? ORDER BY sequence", (run_id,)).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["schema_version"] = SCHEMA_VERSION
+            item["payload"] = json.loads(item["payload"])
+            result.append(item)
+        return result
+
+    def project_run(self, run_id):
+        run = self.db.execute("SELECT * FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        events = self.list_events(run_id)
+        return {**(dict(run) if run else {"run_id": run_id}), "status": events[-1]["status"] if events else "unknown", "last_event": events[-1] if events else None, "event_count": len(events)}
+
+    def list_runs(self):
+        return [dict(row) for row in self.db.execute("SELECT * FROM runs ORDER BY created_at DESC").fetchall()]
+
+    def list_artifacts(self, run_id=None):
+        if run_id is None:
+            rows = self.db.execute("SELECT * FROM artifacts ORDER BY created_at DESC").fetchall()
+        else:
+            rows = self.db.execute("SELECT * FROM artifacts WHERE run_id=? ORDER BY created_at", (run_id,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_canon_snapshots(self, run_id):
+        return [dict(row) for row in self.db.execute("SELECT * FROM canon_snapshots WHERE run_id=? ORDER BY recorded_at", (run_id,)).fetchall()]
+
+    def get_task(self, task_id):
+        row = self.db.execute("SELECT packet FROM tasks WHERE task_id=?", (task_id,)).fetchone()
+        return json.loads(row["packet"]) if row else None
+
+    def save_result(self, result_id, run_id, task_id, payload, completed=True):
+        self._execute("INSERT INTO results VALUES(?,?,?,?,?,?)", (result_id, run_id, task_id, canonical(sanitize(payload)), 1 if completed else 0, utc_now()))
+
+    def get_result_for_run(self, run_id):
+        row = self.db.execute("SELECT payload FROM results WHERE run_id=? ORDER BY created_at DESC LIMIT 1", (run_id,)).fetchone()
+        return json.loads(row["payload"]) if row else None
+
+    def create_approval(self, approval_id, run_id, action, scope, reason):
+        requested = utc_now()
+        self._execute("INSERT INTO approvals VALUES(?,?,?,?,?,?)", (approval_id, run_id, action, canonical(scope), redact(reason), requested))
+        return {"schema_version": SCHEMA_VERSION, "approval_id": approval_id, "run_id": run_id, "action": action, "scope": scope, "reason": redact(reason), "status": "pending", "requested_at": requested}
+
+    def resolve_approval(self, approval_id, approve, actor, scope, reason=None, request_changes=False):
+        standalone = self._transaction_depth == 0
+        if standalone:
+            self.db.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.db.execute("SELECT * FROM approvals WHERE approval_id=?", (approval_id,)).fetchone()
+            if not row:
+                raise ApprovalError([{"code": "APPROVAL_NOT_FOUND", "message": "Approval not found."}])
+            if json.loads(row["scope"]) != scope:
+                raise ApprovalError([{"code": "APPROVAL_SCOPE_MISMATCH", "message": "Resolution scope does not match request."}])
+            if self.db.execute("SELECT 1 FROM approval_decisions WHERE approval_id=?", (approval_id,)).fetchone():
+                raise ApprovalError([{"code": "APPROVAL_REPLAY", "message": "Approval already resolved."}])
+            decision = "changes_requested" if request_changes else ("approved" if approve else "rejected")
+            decision_id = f"decision-{uuid.uuid4().hex}"
+            recorded = utc_now()
+            self.db.execute("INSERT INTO approval_decisions VALUES(?,?,?,?,?,?,?)", (decision_id, approval_id, decision, actor, canonical(scope), redact(reason or ""), recorded))
+            if standalone:
+                self.db.commit()
+            return {"decision_id": decision_id, "approval_id": approval_id, "decision": decision, "actor": actor, "scope": scope, "reason": redact(reason or ""), "recorded_at": recorded}
+        except ApprovalError:
+            if standalone:
+                self.db.rollback()
+            raise
+        except sqlite3.IntegrityError:
+            if standalone:
+                self.db.rollback()
+            raise ApprovalError([{"code": "APPROVAL_REPLAY", "message": "Approval already resolved."}]) from None
+        except Exception:
+            if standalone:
+                self.db.rollback()
+            raise
+
+    def list_approval_decisions(self, approval_id):
+        return [dict(row) for row in self.db.execute("SELECT * FROM approval_decisions WHERE approval_id=? ORDER BY recorded_at", (approval_id,)).fetchall()]
+
+    def get_approval(self, approval_id):
+        row = self.db.execute("SELECT * FROM approvals WHERE approval_id=?", (approval_id,)).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["scope"] = json.loads(item["scope"])
+        decisions = self.list_approval_decisions(approval_id)
+        item["status"] = decisions[-1]["decision"] if decisions else "pending"
+        return item
+
+    def list_approvals(self):
+        return [self.get_approval(row["approval_id"]) for row in self.db.execute("SELECT approval_id FROM approvals ORDER BY requested_at DESC")]
+
+    def record_artifact(self, artifact_id, run_id, relative_path, sha256, kind):
+        self._execute("INSERT INTO artifacts VALUES(?,?,?,?,?,?)", (artifact_id, run_id, relative_path, sha256, kind, utc_now()))
+        return {"artifact_id": artifact_id, "run_id": run_id, "relative_path": relative_path, "sha256": sha256, "kind": kind}
+
+    def snapshot_canon(self, run_id, ref):
+        snapshot_id = f"snapshot-{uuid.uuid4().hex}"
+        self._execute("INSERT INTO canon_snapshots VALUES(?,?,?,?,?,?,?,?,?,?)", (snapshot_id, run_id, ref["id"], ref["repository_path"], ref["relative_file_path"], ref["git_commit"], ref["blob_hash"], ref["content_sha256"], ref["authority_class"], utc_now()))
+        return snapshot_id
+
+    def raw_update(self, table, record_id, values):
+        keys = {"events": "event_id", "results": "result_id", "approvals": "approval_id", "approval_decisions": "decision_id", "artifacts": "artifact_id", "canon_snapshots": "snapshot_id"}
+        if table not in keys or not values:
+            raise ValueError("Unsupported table")
+        if any(not column.isascii() or not column.isidentifier() for column in values):
+            raise ValueError("Unsupported column")
+        columns = ", ".join(f"{key}=?" for key in values)
+        self._execute(f"UPDATE {table} SET {columns} WHERE {keys[table]}=?", [*values.values(), record_id])
+
+    def raw_delete(self, table, record_id):
+        keys = {"events": "event_id", "results": "result_id", "approvals": "approval_id", "approval_decisions": "decision_id", "artifacts": "artifact_id", "canon_snapshots": "snapshot_id"}
+        if table not in keys:
+            raise ValueError("Unsupported table")
+        self._execute(f"DELETE FROM {table} WHERE {keys[table]}=?", (record_id,))

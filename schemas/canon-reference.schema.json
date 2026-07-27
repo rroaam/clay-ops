@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/canon-reference.schema.json",
+  "title": "CANON_REFERENCE",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "repository_path", "relative_file_path", "git_commit", "blob_hash", "content_sha256", "authority_class", "access"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "repository_path": {"type": "string", "minLength": 1},
+    "relative_file_path": {"type": "string", "minLength": 1},
+    "git_commit": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+    "blob_hash": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+    "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "authority_class": {"type": "string", "minLength": 1},
+    "access": {"const": "read-only"}
+  }
+}

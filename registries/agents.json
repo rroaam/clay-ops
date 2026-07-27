@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "agents": [
+    {
+      "agent_id": "clay-copy-reviewer",
+      "role": "Deterministic local copy reviewer",
+      "team": "Clay Ops",
+      "capabilities": [
+        "copy-review",
+        "claim-screening",
+        "evidence-generation"
+      ],
+      "write_roots": [
+        "runtime"
+      ],
+      "can_access_credentials": false,
+      "can_deploy": false,
+      "can_publish": false,
+      "can_modify_canon": false,
+      "can_access_member_data": false
+    }
+  ]
+}

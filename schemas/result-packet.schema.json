@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/result-packet.schema.json",
+  "title": "RESULT_PACKET",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "packet_type", "result_id", "task_id", "run_id", "workflow_id", "status", "summary", "gate_results", "evidence", "outputs", "approval_required", "approval_status", "canon_mutations", "external_side_effects", "completed_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "packet_type": {"const": "RESULT_PACKET"},
+    "result_id": {"type": "string", "pattern": "^result-[a-z0-9-]+$"},
+    "task_id": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "workflow_id": {"type": "string", "minLength": 1},
+    "status": {"enum": ["pass", "fail", "blocked", "awaiting_approval"]},
+    "summary": {"type": "string", "minLength": 1},
+    "gate_results": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["gate_id", "status", "reason", "evidence_refs"], "properties": {"gate_id": {"type": "string", "minLength": 1}, "status": {"enum": ["pass", "fail", "held", "blocked", "needs_human_review"]}, "reason": {"type": "string", "minLength": 1}, "evidence_refs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}}}},
+    "evidence": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["kind", "ref", "sha256"], "properties": {"kind": {"type": "string", "minLength": 1}, "ref": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}}},
+    "outputs": {"type": "object"},
+    "approval_required": {"type": "boolean"},
+    "approval_status": {"enum": ["not_requested", "pending", "approved", "rejected", "changes_requested"]},
+    "canon_mutations": {"type": "array", "maxItems": 0},
+    "external_side_effects": {"type": "array", "maxItems": 0},
+    "completed_at": {"type": "string", "format": "date-time"}
+  }
+}

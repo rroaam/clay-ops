@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0.0",
+  "workflow_id": "copy-review",
+  "version": "1.0.0",
+  "purpose": "Review non-sensitive proposed Clay copy without editing or publishing it.",
+  "assigned_agent": "clay-copy-reviewer",
+  "allowed_tools": [
+    "canon-read",
+    "local-validator",
+    "ops-store-write"
+  ],
+  "required_inputs": [
+    "copy-or-read-only-source",
+    "target-surface",
+    "acceptance-criteria",
+    "canon-reference-ids",
+    "source-provenance"
+  ],
+  "gates": [
+    {
+      "gate_id": "input-provenance",
+      "on_fail": "block"
+    },
+    {
+      "gate_id": "canon-pinning",
+      "on_fail": "block"
+    },
+    {
+      "gate_id": "unsupported-health-claim",
+      "on_fail": "fail"
+    },
+    {
+      "gate_id": "healthcare-authority",
+      "on_unresolved": "needs_human_review"
+    },
+    {
+      "gate_id": "em-dash",
+      "on_fail": "fail"
+    },
+    {
+      "gate_id": "review-acceptance",
+      "on_pass": "awaiting_approval"
+    }
+  ],
+  "side_effect_mode": "none"
+}

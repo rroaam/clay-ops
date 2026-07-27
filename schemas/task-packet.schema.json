@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/task-packet.schema.json",
+  "title": "TASK_PACKET",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "packet_type", "task_id", "workflow_id", "title", "acceptance_criteria", "assigned_agent", "allowed_tools", "source_of_truth", "canon_reference_ids", "requested_actions", "write_scope", "approval", "safety", "input"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "packet_type": {"const": "TASK_PACKET"},
+    "task_id": {"type": "string", "pattern": "^task-[a-z0-9-]+$"},
+    "workflow_id": {"const": "copy-review"},
+    "title": {"type": "string", "minLength": 1},
+    "acceptance_criteria": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "assigned_agent": {"type": "string", "minLength": 1},
+    "allowed_tools": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "source_of_truth": {"type": "string", "minLength": 1, "not": {"pattern": "(?i)dashboard"}},
+    "canon_reference_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "requested_actions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "write_scope": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^runtime(?:/.*)?$"}},
+    "approval": {"type": "object", "additionalProperties": false, "required": ["status", "approver"], "properties": {"status": {"enum": ["not_requested", "pending", "approved", "rejected", "changes_requested"]}, "approver": {"type": ["string", "null"]}}},
+    "safety": {"type": "object", "additionalProperties": false, "required": ["external_side_effects", "credentials", "canon_writes", "deployment", "member_data"], "properties": {"external_side_effects": {"const": false}, "credentials": {"const": false}, "canon_writes": {"const": false}, "deployment": {"const": false}, "member_data": {"const": false}}},
+    "input": {"type": "object", "additionalProperties": false, "required": ["proposed_text", "source_reference", "content_sha256", "target_surface", "source_provenance"], "properties": {"proposed_text": {"type": ["string", "null"]}, "source_reference": {"type": ["string", "null"]}, "content_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "target_surface": {"type": "string", "minLength": 1}, "source_provenance": {"type": "object", "additionalProperties": false, "required": ["kind", "label"], "properties": {"kind": {"enum": ["direct", "local-read-only-source"]}, "label": {"type": "string", "minLength": 1}, "path": {"type": "string"}}}}}
+  }
+}

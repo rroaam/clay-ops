@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0.0",
+  "tools": [
+    {
+      "tool_id": "canon-read",
+      "mode": "read-only",
+      "roots": [
+        "config:canon-registry"
+      ],
+      "external_side_effects": false,
+      "credentials_required": false
+    },
+    {
+      "tool_id": "local-validator",
+      "mode": "local-exec",
+      "roots": [
+        "clay-ops"
+      ],
+      "external_side_effects": false,
+      "credentials_required": false
+    },
+    {
+      "tool_id": "ops-store-write",
+      "mode": "runtime-write",
+      "roots": [
+        "runtime"
+      ],
+      "external_side_effects": false,
+      "credentials_required": false
+    }
+  ]
+}

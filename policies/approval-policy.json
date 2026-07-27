@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0.0",
+  "policy_id": "clay-ops-local-v1",
+  "rules": [
+    {
+      "action": "local_review",
+      "disposition": "allow",
+      "approval_required": false
+    },
+    {
+      "action": "review_acceptance",
+      "disposition": "hold",
+      "approval_required": true,
+      "approvers": [
+        "Ryan"
+      ],
+      "consequence": "Records acceptance of review only"
+    },
+    {
+      "action": "request_changes",
+      "disposition": "record",
+      "approval_required": false
+    },
+    {
+      "action": "publish",
+      "disposition": "forbid",
+      "approval_required": true
+    },
+    {
+      "action": "send_email",
+      "disposition": "forbid",
+      "approval_required": true
+    },
+    {
+      "action": "deploy",
+      "disposition": "forbid",
+      "approval_required": true
+    },
+    {
+      "action": "canon_mutation",
+      "disposition": "forbid",
+      "approval_required": true
+    },
+    {
+      "action": "credential_access",
+      "disposition": "forbid",
+      "approval_required": true
+    }
+  ]
+}

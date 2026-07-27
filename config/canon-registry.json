@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0.0",
+  "repository_root": "../clayhc-clay-engine",
+  "references": [
+    {
+      "id": "brand-design-law",
+      "repository_path": "../clayhc-clay-engine",
+      "relative_file_path": "DESIGN.md",
+      "git_commit": "fe8de676541c98c0880602458a041ebf525a0d29",
+      "blob_hash": "2333bf7efc66a0324dfca81eb5d8736c32dcd2f9",
+      "content_sha256": "f14e449beb385e8d22aa9d22be69e560923d249d4358b027e994d09077195559",
+      "authority_class": "brand-design-law",
+      "access": "read-only"
+    },
+    {
+      "id": "copy-language-law",
+      "repository_path": "../clayhc-clay-engine",
+      "relative_file_path": "docs/clay-brain/language-architecture-sot.md",
+      "git_commit": "fe8de676541c98c0880602458a041ebf525a0d29",
+      "blob_hash": "053396d01fb5f3bd63529d761c91c2e771332dcb",
+      "content_sha256": "005625357bc4783cd72cfd1996b5e2c641ddf8aafcb96cc6d3d6f98d80f7c452",
+      "authority_class": "tone-language-law",
+      "access": "read-only"
+    },
+    {
+      "id": "banned-phrases-law",
+      "repository_path": "../clayhc-clay-engine",
+      "relative_file_path": ".claude/rules/banned-phrases.md",
+      "git_commit": "fe8de676541c98c0880602458a041ebf525a0d29",
+      "blob_hash": "28704b3e4bc56a890d599589f85160f09de1e1e8",
+      "content_sha256": "3738da9f7bfa4a88de2d348b276d36b8ff018f69c871d2314996ed0444dda8b3",
+      "authority_class": "copy-constraint-law",
+      "access": "read-only"
+    },
+    {
+      "id": "healthcare-context-insufficient",
+      "repository_path": "../clayhc-clay-engine",
+      "relative_file_path": "docs/clay-brain/core-product-definition.md",
+      "git_commit": "fe8de676541c98c0880602458a041ebf525a0d29",
+      "blob_hash": "818190c8329a045cd0c1e45138398346d9d04c2b",
+      "content_sha256": "12c20526671fcdb70edfd566e1fe7943f2e43370df1d7cd75cad055b65482e5c",
+      "authority_class": "healthcare-context-insufficient",
+      "access": "read-only"
+    }
+  ]
+}
