@@ -42,10 +42,25 @@ def asset_doc(**overrides):
     return value
 
 
+def context_doc(**overrides):
+    value = {
+        "schema_version": "1.0.0", "context_id": "context-summer", "project_id": "project-summer",
+        "name": "Clay brand context", "brand_name": "Clay", "brand_description": "Clay is a design studio.",
+        "positioning": None, "audience": None, "voice_and_tone": None, "design_principles": None,
+        "color_tokens": ["#C8FF00"], "typography_references": ["Bebas Neue"], "image_direction": None,
+        "campaign_context": None, "product_context": None, "prohibited_claims": [], "source_reference_ids": [],
+        "provenance": {"kind": "manual", "source": "operator_entry"},
+        "created_at": "2026-07-27T00:00:00Z", "updated_at": "2026-07-27T00:00:00Z",
+    }
+    value.update(overrides)
+    return value
+
+
 @pytest.mark.parametrize("kind,document", [
     ("creative-project", project_doc()),
     ("generation-request", request_doc()),
     ("creative-asset", asset_doc()),
+    ("creative-context", context_doc()),
 ])
 def test_creative_contracts_validate(repo_root, kind, document):
     validate_document(kind, document, repo_root / "schemas")
@@ -87,3 +102,62 @@ def test_project_scoped_lists_do_not_leak_other_projects(tmp_path):
 
     assert {x["asset_id"] for x in store.list_assets("project-summer")} == {"asset-one"}
     assert {x["request_id"] for x in store.list_generation_requests("project-summer")} == {"request-one"}
+
+
+def test_update_project_renames_without_touching_brief_or_created_at(tmp_path):
+    store = OperationalStore(tmp_path / "ops.sqlite3")
+    store.create_project(project_doc())
+    updated = store.update_project("project-summer", name="[Verification] Renamed", tags=["verification-only"])
+    assert updated["name"] == "[Verification] Renamed"
+    assert updated["tags"] == ["verification-only"]
+    # Original evidence must survive a rename untouched.
+    assert updated["brief"] == "Bright launch"
+    assert updated["project_id"] == "project-summer"
+    assert updated["created_at"] == "2026-07-27T00:00:00Z"
+    assert store.get_project("project-summer")["name"] == "[Verification] Renamed"
+
+
+def test_update_project_rejects_empty_name(tmp_path):
+    store = OperationalStore(tmp_path / "ops.sqlite3")
+    store.create_project(project_doc())
+    with pytest.raises(ValueError, match="cannot be empty"):
+        store.update_project("project-summer", name="   ")
+
+
+def test_create_context_persists_and_projects_across_project(tmp_path):
+    store = OperationalStore(tmp_path / "ops.sqlite3")
+    store.create_project(project_doc())
+    store.create_context(context_doc())
+    stored = store.get_context("context-summer")
+    assert stored["brand_name"] == "Clay"
+    assert stored["provenance"]["kind"] == "manual"
+    assert store.list_contexts("project-summer") == [stored]
+
+
+def test_update_context_applies_explicit_edit_and_bumps_updated_at(tmp_path):
+    store = OperationalStore(tmp_path / "ops.sqlite3")
+    store.create_project(project_doc())
+    store.create_context(context_doc())
+    updated = store.update_context("context-summer", positioning="Sculptural motion for modern brands.")
+    assert updated["positioning"] == "Sculptural motion for modern brands."
+    # An explicit edit must not silently invent values for fields the
+    # caller did not pass — everything else stays exactly as stored.
+    assert updated["brand_name"] == "Clay"
+    assert updated["updated_at"] != "2026-07-27T00:00:00Z"
+
+
+def test_update_context_rejects_unknown_field(tmp_path):
+    store = OperationalStore(tmp_path / "ops.sqlite3")
+    store.create_project(project_doc())
+    store.create_context(context_doc())
+    with pytest.raises(ValueError, match="Unsupported creative context update"):
+        store.update_context("context-summer", schema_version="9.9.9")
+
+
+def test_context_scoped_list_does_not_leak_other_projects(tmp_path):
+    store = OperationalStore(tmp_path / "ops.sqlite3")
+    store.create_project(project_doc())
+    store.create_project(project_doc(project_id="project-other", name="Other"))
+    store.create_context(context_doc())
+    store.create_context(context_doc(context_id="context-other", project_id="project-other"))
+    assert {c["context_id"] for c in store.list_contexts("project-summer")} == {"context-summer"}

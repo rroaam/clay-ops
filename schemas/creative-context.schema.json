@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/creative-context.schema.json",
+  "title": "CREATIVE_CONTEXT", "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "context_id", "project_id", "name", "provenance", "created_at", "updated_at"],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "context_id": {"type": "string", "pattern": "^context-[a-z0-9-]+$"},
+    "project_id": {"type": "string", "pattern": "^project-[a-z0-9-]+$"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+    "brand_name": {"type": ["string", "null"], "maxLength": 200},
+    "brand_description": {"type": ["string", "null"], "maxLength": 10000},
+    "positioning": {"type": ["string", "null"], "maxLength": 5000},
+    "audience": {"type": ["string", "null"], "maxLength": 5000},
+    "voice_and_tone": {"type": ["string", "null"], "maxLength": 5000},
+    "design_principles": {"type": ["string", "null"], "maxLength": 5000},
+    "color_tokens": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 80}},
+    "typography_references": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 200}},
+    "image_direction": {"type": ["string", "null"], "maxLength": 5000},
+    "campaign_context": {"type": ["string", "null"], "maxLength": 5000},
+    "product_context": {"type": ["string", "null"], "maxLength": 5000},
+    "prohibited_claims": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 500}},
+    "source_reference_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "provenance": {"type": "object", "minProperties": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"}
+  }
+}

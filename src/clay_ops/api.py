@@ -19,6 +19,8 @@ from .projection import ProjectionService
 from .redaction import redact
 from .store import OperationalStore, utc_now
 from .workflows.image_generation import ImageGenerationWorkflow
+from .approval_actions import ApprovalActionError, decide_approval
+from .provider_capabilities import describe_known_providers
 
 
 MAX_BODY_BYTES = 16 * 1024 * 1024
@@ -107,7 +109,7 @@ def _handler(root: Path, store: OperationalStore, hermes=None, image_registry=No
                     finally:
                         local_store.db.close()
                     return
-                if path == "/api/projects" or path == "/api/generation-requests" or path.startswith("/api/projects/") or path.startswith("/api/generation-requests/"):
+                if path == "/api/projects" or path == "/api/generation-requests" or path == "/api/contexts" or path.startswith("/api/projects/") or path.startswith("/api/generation-requests/") or path.startswith("/api/contexts/"):
                     local_store = OperationalStore(database_path)
                     try:
                         snapshot = ProjectionService(root, local_store, image_registry).snapshot()
@@ -115,14 +117,25 @@ def _handler(root: Path, store: OperationalStore, hermes=None, image_registry=No
                             value = {"projects": snapshot["projects"]}
                         elif path == "/api/generation-requests":
                             value = {"generation_requests": snapshot["generation_requests"]}
+                        elif path == "/api/contexts":
+                            value = {"creative_contexts": snapshot["creative_contexts"]}
                         elif path.startswith("/api/projects/") and path.endswith("/assets"):
                             project_id = unquote(path.removeprefix("/api/projects/").removesuffix("/assets").rstrip("/"))
                             value = {"assets": [item for item in snapshot["assets"] if item["project_id"] == project_id]}
+                        elif path.startswith("/api/projects/") and path.endswith("/context"):
+                            project_id = unquote(path.removeprefix("/api/projects/").removesuffix("/context").rstrip("/"))
+                            value = {"creative_contexts": [item for item in snapshot["creative_contexts"] if item["project_id"] == project_id]}
                         elif path.startswith("/api/projects/"):
                             project_id = unquote(path.removeprefix("/api/projects/"))
                             item = next((item for item in snapshot["projects"] if item["project_id"] == project_id), None)
                             if item is None:
                                 self._json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Project not found."}); return
+                            value = item
+                        elif path.startswith("/api/contexts/"):
+                            context_id = unquote(path.removeprefix("/api/contexts/"))
+                            item = next((item for item in snapshot["creative_contexts"] if item["context_id"] == context_id), None)
+                            if item is None:
+                                self._json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Creative context not found."}); return
                             value = item
                         else:
                             request_id = unquote(path.removeprefix("/api/generation-requests/"))
@@ -150,6 +163,35 @@ def _handler(root: Path, store: OperationalStore, hermes=None, image_registry=No
                     self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:")
                     self.end_headers()
                     self.wfile.write(data)
+                    return
+                if path.startswith("/api/approvals/") and path.endswith("/execution-readiness"):
+                    from .execution_readiness import evaluate_execution_readiness
+                    approval_id = unquote(path.removeprefix("/api/approvals/").removesuffix("/execution-readiness"))
+                    local_store = OperationalStore(database_path)
+                    try:
+                        approval = local_store.get_approval(approval_id)
+                        if not approval:
+                            self._json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Approval not found."})
+                            return
+                        request_id = approval.get("scope", {}).get("request_id")
+                        if not request_id:
+                            self._json(HTTPStatus.BAD_REQUEST, {"status": "error", "message": "Approval scope missing request_id."})
+                            return
+                        snapshot = ProjectionService(root, local_store, image_registry).snapshot()
+                        generation_request = next((r for r in snapshot["generation_requests"] if r["request_id"] == request_id), None)
+                        if not generation_request:
+                            self._json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Generation request not found."})
+                            return
+                        providers = describe_known_providers()
+                        if image_registry:
+                            providers = list(image_registry.describe()) + [p for p in providers if p["name"] not in {r["name"] for r in image_registry.describe()}]
+                        readiness = evaluate_execution_readiness(generation_request, approval, providers)
+                        # Serialize dataclass to dict for JSON response
+                        from dataclasses import asdict
+                        readiness_dict = asdict(readiness)
+                        self._json(HTTPStatus.OK, readiness_dict)
+                    finally:
+                        local_store.db.close()
                     return
                 self._json(HTTPStatus.NOT_FOUND, {"status": "error", "message": "Not found."})
             except Exception as exc:
@@ -209,6 +251,51 @@ def _handler(root: Path, store: OperationalStore, hermes=None, image_registry=No
                         local_store.db.close()
                     self._json(HTTPStatus.OK, result)
                     return
+                if path == "/api/contexts":
+                    project_id = str(body.get("project_id", "")).strip()
+                    name = str(body.get("name", "")).strip()
+                    if not project_id or not name:
+                        raise ValueError("project_id and name are required.")
+                    provenance = body.get("provenance") if isinstance(body.get("provenance"), dict) else None
+                    if not provenance:
+                        raise ValueError("Explicit provenance (kind + source) is required for creative context.")
+                    now = utc_now()
+                    context = {
+                        "schema_version": "1.0.0", "context_id": f"context-{uuid.uuid4().hex}", "project_id": project_id, "name": name[:200],
+                        "brand_name": body.get("brand_name"), "brand_description": body.get("brand_description"),
+                        "positioning": body.get("positioning"), "audience": body.get("audience"), "voice_and_tone": body.get("voice_and_tone"),
+                        "design_principles": body.get("design_principles"), "color_tokens": list(body.get("color_tokens", [])),
+                        "typography_references": list(body.get("typography_references", [])), "image_direction": body.get("image_direction"),
+                        "campaign_context": body.get("campaign_context"), "product_context": body.get("product_context"),
+                        "prohibited_claims": list(body.get("prohibited_claims", [])), "source_reference_ids": list(body.get("source_reference_ids", [])),
+                        "provenance": provenance, "created_at": now, "updated_at": now,
+                    }
+                    local_store = OperationalStore(database_path)
+                    try:
+                        if local_store.get_project(project_id) is None:
+                            raise ValueError("Creative context must reference an existing project.")
+                        local_store.create_context(context)
+                    finally:
+                        local_store.db.close()
+                    self._json(HTTPStatus.CREATED, context)
+                    return
+                if path.startswith("/api/contexts/"):
+                    context_id = unquote(path.removeprefix("/api/contexts/"))
+                    allowed_fields = {
+                        "name", "brand_name", "brand_description", "positioning", "audience", "voice_and_tone",
+                        "design_principles", "color_tokens", "typography_references", "image_direction",
+                        "campaign_context", "product_context", "prohibited_claims", "source_reference_ids", "provenance",
+                    }
+                    updates = {key: value for key, value in body.items() if key in allowed_fields}
+                    if not updates:
+                        raise ValueError("At least one editable context field is required.")
+                    local_store = OperationalStore(database_path)
+                    try:
+                        result = local_store.update_context(context_id, **updates)
+                    finally:
+                        local_store.db.close()
+                    self._json(HTTPStatus.OK, result)
+                    return
                 if path == "/api/runs":
                     local_store = OperationalStore(database_path)
                     try:
@@ -227,6 +314,45 @@ def _handler(root: Path, store: OperationalStore, hermes=None, image_registry=No
                             actor=str(body.get("actor", "Ryan"))[:80] or "Ryan",
                             reason=str(body.get("reason", ""))[:2000],
                         )
+                    finally:
+                        local_store.db.close()
+                    self._json(HTTPStatus.OK, result)
+                    return
+                if path.startswith("/api/supervised-workflow/approvals/") and path.endswith("/decide"):
+                    approval_id = unquote(path.removeprefix("/api/supervised-workflow/approvals/").removesuffix("/decide"))
+                    local_store = OperationalStore(database_path)
+                    try:
+                        providers = describe_known_providers()
+                        registered = image_registry.describe() if image_registry else []
+                        seen_ids = {p["provider_id"] for p in registered}
+                        all_providers = list(registered) + [p for p in providers if p["provider_id"] not in seen_ids]
+                        try:
+                            outcome = decide_approval(
+                                local_store,
+                                approval_id=approval_id,
+                                generation_request_id=str(body.get("request_id", "")),
+                                decision=str(body.get("decision", "")),
+                                actor=str(body.get("actor", "Ryan"))[:80] or "Ryan",
+                                reason=str(body.get("reason", ""))[:2000],
+                                submitted_request_hash=body.get("request_hash"),
+                                providers=all_providers,
+                            )
+                        except ApprovalActionError as exc:
+                            local_store.db.close()
+                            self._json(HTTPStatus.CONFLICT, {"status": "error", "issues": exc.issues})
+                            return
+                        result = {
+                            "decision_id": outcome.decision_id,
+                            "approval_id": outcome.approval_id,
+                            "decision": outcome.decision,
+                            "actor": outcome.actor,
+                            "reason": redact(outcome.reason),
+                            "recorded_at": outcome.recorded_at,
+                            "request_hash": outcome.request_hash,
+                            "provider_blocked": outcome.provider_blocked,
+                            "status_message": outcome.status_message,
+                            "execution_status": outcome.execution_status,
+                        }
                     finally:
                         local_store.db.close()
                     self._json(HTTPStatus.OK, result)

@@ -61,8 +61,10 @@ class OperationalStore:
             CREATE TABLE IF NOT EXISTS creative_projects(project_id TEXT PRIMARY KEY, name TEXT NOT NULL, document TEXT NOT NULL, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS generation_requests(request_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES creative_projects(project_id), run_id TEXT NOT NULL, status TEXT NOT NULL, document TEXT NOT NULL, created_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS creative_assets(asset_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES creative_projects(project_id), request_id TEXT REFERENCES generation_requests(request_id), run_id TEXT, parent_asset_id TEXT REFERENCES creative_assets(asset_id), relative_path TEXT NOT NULL UNIQUE, document TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS creative_contexts(context_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES creative_projects(project_id), document TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS creative_assets_project_idx ON creative_assets(project_id, created_at);
             CREATE INDEX IF NOT EXISTS generation_requests_project_idx ON generation_requests(project_id, created_at);
+            CREATE INDEX IF NOT EXISTS creative_contexts_project_idx ON creative_contexts(project_id, updated_at);
             CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON approval_decisions BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_DECISIONS'); END;
@@ -255,6 +257,26 @@ class OperationalStore:
     def list_projects(self):
         return [json.loads(row["document"]) for row in self.db.execute("SELECT document FROM creative_projects ORDER BY created_at DESC")]
 
+    def update_project(self, project_id, *, name=None, tags=None):
+        """Rename and/or retag an existing project record without deleting
+        or rewriting its original brief/evidence. Used to distinguish
+        verification-only records from production Clay workspaces (see
+        docs/CREATIVE-OS-PHASE-2B.md) — the original brief text, project_id,
+        and created_at timestamp are preserved exactly as recorded."""
+        value = self.get_project(project_id)
+        if value is None:
+            raise ValueError("Creative project not found.")
+        if name is not None:
+            cleaned = str(name).strip()
+            if not cleaned:
+                raise ValueError("Project name cannot be empty.")
+            value["name"] = cleaned[:200]
+        if tags is not None:
+            value["tags"] = list(dict.fromkeys(str(tag) for tag in tags if str(tag)))
+        value = sanitize(value)
+        self._execute("UPDATE creative_projects SET name=?, document=? WHERE project_id=?", (value["name"], canonical(value), project_id))
+        return value
+
     def save_generation_request(self, document):
         value = sanitize(document)
         self._execute(
@@ -318,6 +340,46 @@ class OperationalStore:
             value["tags"] = list(dict.fromkeys(str(tag) for tag in tags if str(tag)))
         self._execute("UPDATE creative_assets SET document=? WHERE asset_id=?", (canonical(sanitize(value)), asset_id))
         return value
+
+    def create_context(self, document):
+        value = sanitize(document)
+        self._execute(
+            "INSERT INTO creative_contexts VALUES(?,?,?,?,?)",
+            (value["context_id"], value["project_id"], canonical(value), value["created_at"], value["updated_at"]),
+        )
+        return value
+
+    def get_context(self, context_id):
+        row = self.db.execute("SELECT document FROM creative_contexts WHERE context_id=?", (context_id,)).fetchone()
+        return json.loads(row["document"]) if row else None
+
+    def list_contexts(self, project_id=None):
+        if project_id is None:
+            rows = self.db.execute("SELECT document FROM creative_contexts ORDER BY updated_at DESC")
+        else:
+            rows = self.db.execute("SELECT document FROM creative_contexts WHERE project_id=? ORDER BY updated_at DESC", (project_id,))
+        return [json.loads(row["document"]) for row in rows]
+
+    def update_context(self, context_id, **fields):
+        """Apply an explicit operator edit to an existing brand-context
+        record. Only fields already defined by the creative-context schema
+        may be updated; created_at/context_id/project_id are immutable.
+        Missing/unset brand fields are never backfilled with fabricated
+        content — callers pass only the fields they have real values for."""
+        current = self.get_context(context_id)
+        if current is None:
+            raise ValueError("Creative context not found.")
+        allowed = {
+            "name", "brand_name", "brand_description", "positioning", "audience", "voice_and_tone",
+            "design_principles", "color_tokens", "typography_references", "image_direction",
+            "campaign_context", "product_context", "prohibited_claims", "source_reference_ids", "provenance",
+        }
+        if set(fields) - allowed:
+            raise ValueError("Unsupported creative context update.")
+        current.update(sanitize(fields))
+        current["updated_at"] = utc_now()
+        self._execute("UPDATE creative_contexts SET document=?, updated_at=? WHERE context_id=?", (canonical(current), current["updated_at"], context_id))
+        return current
 
     def raw_update(self, table, record_id, values):
         keys = {"events": "event_id", "results": "result_id", "approvals": "approval_id", "approval_decisions": "decision_id", "artifacts": "artifact_id", "canon_snapshots": "snapshot_id"}

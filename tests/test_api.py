@@ -58,7 +58,7 @@ def test_loopback_api_trigger_projection_artifact_and_approval(tmp_path):
         _, _, projection = request(base + '/api/projection')
         run = projection['runs'][0]
         assert run['run_id'] == created['run_id']
-        assert projection['needs_ryan'][0]['status'] == 'pending'
+        assert projection['needs_ryan'][0]['approval_status'] == 'pending'
         assert all(agent['status'] in {'simulated', 'unavailable'} for agent in projection['agents'])
         assert next(agent for agent in projection['agents'] if agent['id'] == 'image-director')['status'] == 'unavailable'
         assert projection['health']['image_provider']['status'] == 'unavailable'

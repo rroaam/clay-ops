@@ -111,10 +111,13 @@ def main(argv=None):
         if args.command == "serve":
             from .adapters.hermes_api import HermesAPIAdapter
             from .api import create_server
+            from .seed import seed_clay_projects
 
             token = os.environ.get("CLAY_HERMES_TOKEN", "")
             hermes = HermesAPIAdapter(os.environ.get("CLAY_HERMES_URL", "http://127.0.0.1:8642"), token) if token else None
             store = _store()
+            # Seed the four truthful Clay projects on startup
+            seed_clay_projects(store)
             server = create_server((args.host, args.port), root=ROOT, store=store, hermes=hermes)
             _print({"status": "ready", "url": f"http://{args.host}:{args.port}", "cors": "disabled", "command_headers": {"Content-Type": "application/json", "Origin": "http://<loopback-dashboard-origin>", "X-Clay-HQ-Server": "1"}, "hermes": "runtime-connected" if hermes else "not-configured"})
             try:

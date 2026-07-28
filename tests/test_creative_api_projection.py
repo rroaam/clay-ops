@@ -217,3 +217,68 @@ def test_projection_workflows_include_full_creative_roadmap_without_dropping_ope
     for item in snapshot["workflows"]:
         if item["id"] in roadmap_ids and item["id"] != "image":
             assert item["status"] not in live_statuses
+
+
+def test_context_create_update_and_projection_round_trip(tmp_path):
+    """Creative context must flow through the same command-boundary and
+    projection-read pattern as projects/assets/requests: create via POST,
+    read only via the projection, edit via a scoped POST, never fabricate
+    fields the operator did not supply."""
+    root = tmp_path / "ops"; root.mkdir()
+    store = OperationalStore(root / "runtime" / "ops.sqlite3")
+    server = create_server(("127.0.0.1", 0), root=root, store=store)
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, project = call(base + "/api/projects", "POST", {"name": "Clay Brand System", "brief": "Design tokens and references."}, HEADERS)
+        assert status == 201
+
+        # Creating a context without provenance must be rejected — provenance
+        # is required so a brand-context record can never masquerade as
+        # verified/authoritative without a truthful source.
+        with pytest.raises(urllib.error.HTTPError):
+            call(base + "/api/contexts", "POST", {"project_id": project["project_id"], "name": "Clay brand"}, HEADERS)
+
+        status, context = call(base + "/api/contexts", "POST", {
+            "project_id": project["project_id"], "name": "Clay brand context",
+            "brand_name": "Clay", "brand_description": "Clay is a design studio.",
+            "color_tokens": ["#C8FF00"], "typography_references": ["Bebas Neue"],
+            "provenance": {"kind": "manual", "source": "operator_entry"},
+        }, HEADERS)
+        assert status == 201
+        assert context["brand_name"] == "Clay"
+        # Fields never supplied stay null — nothing is fabricated.
+        assert context["positioning"] is None
+
+        snapshot = ProjectionService(root, store).snapshot()
+        shaped = next(item for item in snapshot["creative_contexts"] if item["context_id"] == context["context_id"])
+        assert shaped["project_id"] == project["project_id"]
+        assert shaped["color_tokens"] == ["#C8FF00"]
+
+        status, updated = call(base + "/api/contexts/" + context["context_id"], "POST", {"positioning": "Sculptural motion for modern brands."}, HEADERS)
+        assert status == 200
+        assert updated["positioning"] == "Sculptural motion for modern brands."
+        assert updated["brand_name"] == "Clay"
+
+        snapshot = ProjectionService(root, store).snapshot()
+        shaped = next(item for item in snapshot["creative_contexts"] if item["context_id"] == context["context_id"])
+        assert shaped["positioning"] == "Sculptural motion for modern brands."
+        assert snapshot["summary"]["creative_contexts"] == 1
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
+
+
+def test_context_must_reference_an_existing_project(tmp_path):
+    root = tmp_path / "ops"; root.mkdir()
+    store = OperationalStore(root / "runtime" / "ops.sqlite3")
+    server = create_server(("127.0.0.1", 0), root=root, store=store)
+    thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    try:
+        with pytest.raises(urllib.error.HTTPError):
+            call(base + "/api/contexts", "POST", {
+                "project_id": "project-does-not-exist", "name": "Orphan context",
+                "provenance": {"kind": "manual", "source": "operator_entry"},
+            }, HEADERS)
+    finally:
+        server.shutdown(); server.server_close(); thread.join(timeout=5)
