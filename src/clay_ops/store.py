@@ -58,6 +58,11 @@ class OperationalStore:
             CREATE TABLE IF NOT EXISTS artifacts(artifact_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, relative_path TEXT NOT NULL, sha256 TEXT NOT NULL, kind TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(run_id,relative_path));
             CREATE TABLE IF NOT EXISTS canon_snapshots(snapshot_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, reference_id TEXT NOT NULL, repository_path TEXT NOT NULL, relative_file_path TEXT NOT NULL, git_commit TEXT NOT NULL, blob_hash TEXT NOT NULL, content_sha256 TEXT NOT NULL, authority_class TEXT NOT NULL, recorded_at TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS results(result_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, task_id TEXT NOT NULL, payload TEXT NOT NULL, completed INTEGER NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS creative_projects(project_id TEXT PRIMARY KEY, name TEXT NOT NULL, document TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS generation_requests(request_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES creative_projects(project_id), run_id TEXT NOT NULL, status TEXT NOT NULL, document TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS creative_assets(asset_id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES creative_projects(project_id), request_id TEXT REFERENCES generation_requests(request_id), run_id TEXT, parent_asset_id TEXT REFERENCES creative_assets(asset_id), relative_path TEXT NOT NULL UNIQUE, document TEXT NOT NULL, created_at TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS creative_assets_project_idx ON creative_assets(project_id, created_at);
+            CREATE INDEX IF NOT EXISTS generation_requests_project_idx ON generation_requests(project_id, created_at);
             CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON approval_decisions BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_DECISIONS'); END;
@@ -234,6 +239,85 @@ class OperationalStore:
         snapshot_id = f"snapshot-{uuid.uuid4().hex}"
         self._execute("INSERT INTO canon_snapshots VALUES(?,?,?,?,?,?,?,?,?,?)", (snapshot_id, run_id, ref["id"], ref["repository_path"], ref["relative_file_path"], ref["git_commit"], ref["blob_hash"], ref["content_sha256"], ref["authority_class"], utc_now()))
         return snapshot_id
+
+    def create_project(self, document):
+        value = sanitize(document)
+        self._execute(
+            "INSERT INTO creative_projects VALUES(?,?,?,?)",
+            (value["project_id"], value["name"], canonical(value), value["created_at"]),
+        )
+        return value
+
+    def get_project(self, project_id):
+        row = self.db.execute("SELECT document FROM creative_projects WHERE project_id=?", (project_id,)).fetchone()
+        return json.loads(row["document"]) if row else None
+
+    def list_projects(self):
+        return [json.loads(row["document"]) for row in self.db.execute("SELECT document FROM creative_projects ORDER BY created_at DESC")]
+
+    def save_generation_request(self, document):
+        value = sanitize(document)
+        self._execute(
+            "INSERT INTO generation_requests VALUES(?,?,?,?,?,?)",
+            (value["request_id"], value["project_id"], value["run_id"], value["status"], canonical(value), value["created_at"]),
+        )
+        return value
+
+    def update_generation_request(self, request_id, **changes):
+        current = self.get_generation_request(request_id)
+        if current is None:
+            raise ValueError("Generation request not found.")
+        allowed = {"status", "attempt_status", "error", "approval_id"}
+        if set(changes) - allowed:
+            raise ValueError("Unsupported generation request update.")
+        current.update(sanitize(changes))
+        self._execute("UPDATE generation_requests SET status=?, document=? WHERE request_id=?", (current["status"], canonical(current), request_id))
+        return current
+
+    def get_generation_request(self, request_id):
+        row = self.db.execute("SELECT document FROM generation_requests WHERE request_id=?", (request_id,)).fetchone()
+        return json.loads(row["document"]) if row else None
+
+    def list_generation_requests(self, project_id=None):
+        if project_id is None:
+            rows = self.db.execute("SELECT document FROM generation_requests ORDER BY created_at DESC")
+        else:
+            rows = self.db.execute("SELECT document FROM generation_requests WHERE project_id=? ORDER BY created_at DESC", (project_id,))
+        return [json.loads(row["document"]) for row in rows]
+
+    def create_asset(self, document):
+        value = sanitize(document)
+        if value.get("parent_asset_id"):
+            parent = self.get_asset(value["parent_asset_id"])
+            if parent is None or parent["project_id"] != value["project_id"]:
+                raise ValueError("Variant parent must belong to the same project.")
+        self._execute(
+            "INSERT INTO creative_assets VALUES(?,?,?,?,?,?,?,?)",
+            (value["asset_id"], value["project_id"], value.get("request_id"), value.get("run_id"), value.get("parent_asset_id"), value["relative_path"], canonical(value), value["created_at"]),
+        )
+        return value
+
+    def get_asset(self, asset_id):
+        row = self.db.execute("SELECT document FROM creative_assets WHERE asset_id=?", (asset_id,)).fetchone()
+        return json.loads(row["document"]) if row else None
+
+    def list_assets(self, project_id=None):
+        if project_id is None:
+            rows = self.db.execute("SELECT document FROM creative_assets ORDER BY created_at DESC")
+        else:
+            rows = self.db.execute("SELECT document FROM creative_assets WHERE project_id=? ORDER BY created_at DESC", (project_id,))
+        return [json.loads(row["document"]) for row in rows]
+
+    def update_asset_metadata(self, asset_id, *, favorite=None, tags=None):
+        value = self.get_asset(asset_id)
+        if value is None:
+            raise ValueError("Creative asset not found.")
+        if favorite is not None:
+            value["favorite"] = bool(favorite)
+        if tags is not None:
+            value["tags"] = list(dict.fromkeys(str(tag) for tag in tags if str(tag)))
+        self._execute("UPDATE creative_assets SET document=? WHERE asset_id=?", (canonical(sanitize(value)), asset_id))
+        return value
 
     def raw_update(self, table, record_id, values):
         keys = {"events": "event_id", "results": "result_id", "approvals": "approval_id", "approval_decisions": "decision_id", "artifacts": "artifact_id", "canon_snapshots": "snapshot_id"}

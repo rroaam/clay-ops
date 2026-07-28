@@ -15,3 +15,5 @@ uv run clay-ops run copy-review --text "<non-sensitive proposed copy>" --target 
 Generated state is confined to `runtime/` and ignored by Git. The dashboard is a projection only. Approval records acceptance or rejection of a review; no command edits, sends, publishes, or deploys content.
 
 The loopback command API requires JSON plus `Origin` and `X-Clay-HQ-Server: 1` headers from the Clay HQ server proxy. Artifact preview URLs in projections are Clay Ops-relative `/api/artifacts/...` paths.
+
+Creative OS Phase 2A adds the local asset/gallery/image foundation. See [Creative OS Phase 2A](docs/CREATIVE-OS-PHASE-2A.md) for architecture, provider approval lifecycle, safe byte imports, projection routes, and roadmap status.

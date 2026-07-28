@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0.0",
+  "workflows": [
+    {"id": "image", "name": "Image generation and local import", "status": "functional"},
+    {"id": "design", "name": "General design", "status": "planned"},
+    {"id": "landing", "name": "Landing pages", "status": "planned"},
+    {"id": "email", "name": "Email creative", "status": "planned"},
+    {"id": "campaign", "name": "Campaign systems", "status": "planned"},
+    {"id": "social", "name": "Social creative", "status": "planned"},
+    {"id": "presentation", "name": "Presentations", "status": "planned"},
+    {"id": "moodboard", "name": "Moodboards", "status": "planned"},
+    {"id": "video", "name": "Video", "status": "planned"}
+  ]
+}
