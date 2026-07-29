@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/knowledge-candidate",
+  "title": "KNOWLEDGE_CANDIDATE",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "candidate_id",
+    "intake_id",
+    "source_message_ts",
+    "source_permalink",
+    "classification",
+    "extracted_meaning",
+    "authority_check",
+    "proposed_destination",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "candidate_id": {"type": "string", "minLength": 1},
+    "intake_id": {"type": "string", "minLength": 1},
+    "source_message_ts": {"type": "string", "minLength": 1},
+    "source_permalink": {"type": "string", "format": "uri"},
+    "classification": {
+      "type": "string",
+      "enum": [
+        "confirmed_decision",
+        "proposed_decision",
+        "open_question",
+        "task",
+        "source_material",
+        "conflict_with_canon",
+        "duplicate",
+        "historical_context"
+      ]
+    },
+    "extracted_meaning": {"type": "string", "minLength": 1},
+    "authority_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current_canonical_source", "conflict_status", "recommended_action", "required_approver"],
+      "properties": {
+        "current_canonical_source": {"type": "string"},
+        "conflict_status": {"type": "string", "minLength": 1},
+        "recommended_action": {"type": "string", "minLength": 1},
+        "required_approver": {"type": "string", "minLength": 1}
+      }
+    },
+    "proposed_destination": {
+      "type": "string",
+      "enum": [
+        "decision_registry",
+        "source_registry",
+        "project_task",
+        "roadmap_member_roadmap_brief",
+        "roadmap_product_strategy_brief",
+        "hermes_durable_lesson",
+        "none"
+      ]
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["pending", "approved", "rejected", "changes_requested"]
+    }
+  }
+}
