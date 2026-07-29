@@ -184,7 +184,9 @@ def _handler(root: Path, store: OperationalStore, hermes=None, image_registry=No
                             return
                         providers = describe_known_providers()
                         if image_registry:
-                            providers = list(image_registry.describe()) + [p for p in providers if p["name"] not in {r["name"] for r in image_registry.describe()}]
+                            registered = list(image_registry.describe())
+                            seen_ids = {p["provider_id"] for p in registered}
+                            providers = registered + [p for p in providers if p["provider_id"] not in seen_ids]
                         readiness = evaluate_execution_readiness(generation_request, approval, providers)
                         # Serialize dataclass to dict for JSON response
                         from dataclasses import asdict
