@@ -1,17 +1,18 @@
 > ## clay-ops — ACTIVE OPERATIONS
 > **Purpose:** Clay's operational control plane: Hermes workflows, contracts, approvals, run evidence, projections, provider readiness, and execution controls.
-> **Authority:** ACTIVE OPERATIONS. The only repository Hermes may modify. Contains no product canon, no deploy code, no credentials, no member data, no PII/PHI.
+> **Authority:** ACTIVE OPERATIONS. Automation policy: Hermes may write only to this repository unless Ryan explicitly authorizes another target. Other repositories are read-only references by default.
+> **Data policy:** credentials, member data, PII, and PHI must not be stored in this repository. Generated runtime state belongs in the git-ignored `runtime/` directory.
 > **Owner:** Ryan Rosenthal (`rroaam`).
 > **Canonical remote:** `https://github.com/rroaam/clay-ops` (HTTPS) — default branch `main`.
-> **Deploys to:** not deployed — local-only control plane; generated state confined to `runtime/` and git-ignored.
-> **Related:** [`claylife/clay-engine`](https://github.com/claylife/clay-engine) (production canon, read-only reference) — [`rroaam/clay-hq`](https://github.com/rroaam/clay-hq) (operator UI; the dashboard is a projection only).
-> **Access:** rroaam (admin). Hermes: modify this repo only, read-only everywhere else. Collaborators by invitation.
-> **Protected surfaces:** `main` — Hermes execution depends on it; never force-push.
+> **Intended runtime:** intended for local operation. Current deployment status must be verified separately.
+> **Related:** [`claylife/clay-engine`](https://github.com/claylife/clay-engine) (product canon; read-only reference) — [`rroaam/clay-hq`](https://github.com/rroaam/clay-hq) (operator UI; the dashboard is a projection only).
+> **Access:** Write access is restricted to authorized collaborators. Repository visibility is governed through GitHub settings.
+> **Policy:** Do not force-push or rewrite `main`.
 > **Last verified:** 2026-07-31
 
 # Clay Ops
 
-Clay Ops is Clay's thin, local-only operational control plane. It stores task/result packets, append-only events and approvals, artifact hashes, and pinned read-only references to canonical Clay repositories. It does not contain product canon, deploy code, credentials, member data, PII, or PHI.
+Clay Ops is Clay's thin, local-only operational control plane. It stores task/result packets, append-only events and approvals, artifact hashes, and pinned read-only references to canonical Clay repositories. It is not a home for product canon or deploy code, and credentials, member data, PII, and PHI must not be stored here (see the data policy above).
 
 ## Local use
 
