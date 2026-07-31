@@ -1,3 +1,14 @@
+> ## clay-ops — ACTIVE OPERATIONS
+> **Purpose:** Clay's operational control plane: Hermes workflows, contracts, approvals, run evidence, projections, provider readiness, and execution controls.
+> **Authority:** ACTIVE OPERATIONS. The only repository Hermes may modify. Contains no product canon, no deploy code, no credentials, no member data, no PII/PHI.
+> **Owner:** Ryan Rosenthal (`rroaam`).
+> **Canonical remote:** `https://github.com/rroaam/clay-ops` (HTTPS) — default branch `main`.
+> **Deploys to:** not deployed — local-only control plane; generated state confined to `runtime/` and git-ignored.
+> **Related:** [`claylife/clay-engine`](https://github.com/claylife/clay-engine) (production canon, read-only reference) — [`rroaam/clay-hq`](https://github.com/rroaam/clay-hq) (operator UI; the dashboard is a projection only).
+> **Access:** rroaam (admin). Hermes: modify this repo only, read-only everywhere else. Collaborators by invitation.
+> **Protected surfaces:** `main` — Hermes execution depends on it; never force-push.
+> **Last verified:** 2026-07-31
+
 # Clay Ops
 
 Clay Ops is Clay's thin, local-only operational control plane. It stores task/result packets, append-only events and approvals, artifact hashes, and pinned read-only references to canonical Clay repositories. It does not contain product canon, deploy code, credentials, member data, PII, or PHI.
