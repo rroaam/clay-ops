@@ -1,0 +1,13 @@
+{
+  "event_type": "slack.message",
+  "timestamp": "2026-01-14T14:20:00Z",
+  "workspace": "clay-studios",
+  "channel": "#engineering",
+  "channel_id": "C01ENG",
+  "message_id": "m008",
+  "user": "ryan",
+  "text": "Blocked on Slack integration - waiting for API approval from legal team. Can't move forward with project updates feature until this is resolved.",
+  "thread_ts": null,
+  "mentions": ["slack-integration", "blocked"],
+  "attachments": []
+}

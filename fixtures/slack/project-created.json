@@ -1,0 +1,13 @@
+{
+  "event_type": "slack.message",
+  "timestamp": "2026-01-12T09:00:00Z",
+  "workspace": "clay-studios",
+  "channel": "#announcements",
+  "channel_id": "C01ANN",
+  "message_id": "m005",
+  "user": "ryan",
+  "text": "Q3 priority: Get Slack integration live. This is critical for real-time project visibility.",
+  "thread_ts": null,
+  "mentions": ["q3-priority", "slack-integration"],
+  "attachments": []
+}

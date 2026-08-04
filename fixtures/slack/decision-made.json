@@ -1,0 +1,13 @@
+{
+  "event_type": "slack.message",
+  "timestamp": "2026-01-13T11:15:00Z",
+  "workspace": "clay-studios",
+  "channel": "#leadership",
+  "channel_id": "C01LEAD",
+  "message_id": "m007",
+  "user": "ryan",
+  "text": "Decision: We're going with Option B - integrate Slack for real-time project updates. Approval pending legal review, but direction is set.",
+  "thread_ts": null,
+  "mentions": ["decision", "slack-integration", "approval"],
+  "attachments": []
+}

@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/work-item",
+  "$comment": "Canonical Work Ledger record. One record per unit of work (task, feature, deliverable, decision). Evidence-driven, never fabricated. Review status gates every write to canon.",
+  "title": "WORK_ITEM",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_item_id",
+    "project_id",
+    "title",
+    "status",
+    "confidence",
+    "review_status",
+    "owner",
+    "created_at",
+    "updated_at",
+    "source_events"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "work_item_id": {
+      "type": "string",
+      "pattern": "^work-[a-z0-9]{12}$"
+    },
+    "project_id": {
+      "type": "string",
+      "pattern": "^proj-[a-z0-9-]+$",
+      "description": "Stable project identifier. Distinct from Creative OS creative_projects."
+    },
+    "objective_id": {
+      "type": ["string", "null"],
+      "pattern": "^okr-[a-z0-9-]+$",
+      "description": "Optional link to Objective/OKR that owns this work."
+    },
+    "key_result_id": {
+      "type": ["string", "null"],
+      "description": "Optional link to a Key Result beneath the objective."
+    },
+    "title": {"type": "string", "minLength": 1, "maxLength": 200},
+    "description": {"type": ["string", "null"], "maxLength": 4000},
+    "status": {
+      "type": "string",
+      "enum": ["backlog", "ready", "active", "blocked", "needs_approval", "done", "cancelled"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low", "unknown"]
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Display name or user_id of single accountable owner."
+    },
+    "contributors": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reason", "opened_at", "source_event_id"],
+        "properties": {
+          "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "opened_at": {"type": "string", "format": "date-time"},
+          "source_event_id": {"type": "string"},
+          "blocking_work_item_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^work-"}
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["work_item_id", "relation"],
+        "properties": {
+          "work_item_id": {"type": "string", "pattern": "^work-"},
+          "relation": {
+            "type": "string",
+            "enum": ["blocks", "blocked_by", "requires", "related"]
+          }
+        }
+      }
+    },
+    "next_action": {
+      "type": ["string", "null"],
+      "maxLength": 500,
+      "description": "One-sentence description of the next concrete step."
+    },
+    "next_action_owner": {"type": ["string", "null"]},
+    "due_at": {"type": ["string", "null"], "format": "date-time"},
+    "last_activity_at": {"type": "string", "format": "date-time"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "0.0 = speculative/hearsay. 1.0 = confirmed decision. Inferences must never claim >0.7 without human review."
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["inferred", "human_confirmed", "needs_ryan", "rejected"]
+    },
+    "source_events": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "event_type", "received_at", "source_url"],
+        "properties": {
+          "event_id": {"type": "string"},
+          "event_type": {"type": "string"},
+          "received_at": {"type": "string", "format": "date-time"},
+          "source_url": {"type": "string", "format": "uri"},
+          "weight": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      },
+      "description": "Append-only evidence chain. No work item may exist without at least one source event."
+    },
+    "approvals": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^wapproval-"},
+      "description": "Linked work-approval IDs."
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "When the work item reached done status. Null if not yet complete."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonically increasing version number. Incremented on each state change or significant update."
+    },
+    "stale_since": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Filled by the reconciliation engine when no activity for configurable threshold."
+    },
+    "state_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from_status", "to_status", "event_id", "occurred_at"],
+        "properties": {
+          "from_status": {"type": "string", "enum": ["backlog", "ready", "active", "blocked", "needs_approval", "done", "cancelled"]},
+          "to_status": {"type": "string", "enum": ["backlog", "ready", "active", "blocked", "needs_approval", "done", "cancelled"]},
+          "event_id": {"type": "string"},
+          "occurred_at": {"type": "string", "format": "date-time"},
+          "confidence_delta": {"type": "number"}
+        }
+      }
+    }
+  }
+}

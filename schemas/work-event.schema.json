@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clay-ops.clayhc.io/schemas/work-event.json",
+  "$comment": "Normalized event envelope for Slack, GitHub, Figma, Drive, and manual activity. Read-only ingest; never mutates canon.",
+  "title": "WORK_EVENT",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "source_system",
+    "source_workspace",
+    "source_actor",
+    "source_timestamp",
+    "received_at",
+    "source_url",
+    "source_pointer",
+    "project_candidates",
+    "payload_checksum",
+    "dedupe_key",
+    "untrusted_content",
+    "redaction_metadata"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0",
+      "description": "Schema version for forward compatibility"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^wev-[a-zA-Z0-9]{24}$",
+      "description": "Globally unique event identifier (UUID-based)"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "github.push",
+        "github.pull_request.opened",
+        "github.pull_request.merged",
+        "github.deployment.succeeded",
+        "github.deployment.failed",
+        "figma.file_version",
+        "figma.comment.added",
+        "figma.comment.resolved",
+        "slack.message",
+        "slack.blocker_raised",
+        "slack.approval_requested",
+        "slack.decision_proposed",
+        "drive.document.updated",
+        "manual.work_log"
+      ],
+      "description": "Normalized event type across all source systems"
+    },
+    "source_system": {
+      "type": "string",
+      "enum": ["github", "figma", "slack", "drive", "manual"],
+      "description": "Originating system for this event"
+    },
+    "source_workspace": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Workspace or repository identifier (e.g., 'clay-studios', 'clay-engine')"
+    },
+    "source_actor": {
+      "type": "object",
+      "required": ["id", "display_name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Actor identifier in source system (e.g., GitHub username, Slack user ID)"
+        },
+        "display_name": {
+          "type": "string",
+          "description": "Human-readable actor name"
+        },
+        "email": {
+          "type": ["string", "null"],
+          "description": "Actor email if available, null otherwise"
+        }
+      }
+    },
+    "source_timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event occurred in the source system (ISO 8601)"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When clay-ops received/processed this event (ISO 8601)"
+    },
+    "source_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Permalink to the event in the source system"
+    },
+    "source_pointer": {
+      "type": "string",
+      "description": "Exact pointer within source system (e.g., 'repos/owner/repo/commits/abc123', 'channels/C012/messages/1234.5678')"
+    },
+    "project_candidates": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^proj-[a-z0-9-]+$"
+      },
+      "minItems": 0,
+      "description": "Candidate project IDs inferred from event content. Empty array if no candidates."
+    },
+    "payload_checksum": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA-256 hash of canonical (pre-redaction) payload for deduplication"
+    },
+    "dedupe_key": {
+      "type": "string",
+      "description": "Idempotency key: source_system + source_pointer + payload_checksum"
+    },
+    "untrusted_content": {
+      "type": "boolean",
+      "description": "True if payload contains user-generated text that must be treated as untrusted"
+    },
+    "redaction_metadata": {
+      "type": "object",
+      "required": ["redacted", "fields_redacted"],
+      "additionalProperties": false,
+      "properties": {
+        "redacted": {
+          "type": "boolean",
+          "description": "Whether any fields were redacted"
+        },
+        "fields_redacted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of field paths that were redacted (e.g., ['payload.token', 'payload.email'])"
+        }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "description": "Redacted event payload. Secrets, tokens, and sensitive data replaced with [REDACTED].",
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "event_type": "github.deployment.failed",
+  "timestamp": "2026-01-16T09:30:00Z",
+  "repository": "clay-engine",
+  "deployment_id": "dep-20260116-0930",
+  "environment": "production",
+  "ref": "f7e8d9c0b1a2",
+  "creator": "github-actions",
+  "error": "Database migration failed: relation 'work_items' does not exist"
+}

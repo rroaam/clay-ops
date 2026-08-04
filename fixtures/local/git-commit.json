@@ -1,0 +1,11 @@
+{
+  "event_type": "local.git.commit",
+  "timestamp": "2026-01-15T10:25:00Z",
+  "repository": "clay-engine",
+  "branch": "feat/slack-integration",
+  "commit_hash": "abc123def456",
+  "author": "Justin",
+  "author_email": "justin@clay.com",
+  "message": "feat: add Slack API client with OAuth2 support\n\nImplements Slack integration for posting project updates to #engineering channel.\nIncludes rate limiting and error handling.\n\nFixes #142",
+  "files_changed": ["src/slack_client.py", "src/oauth.py", "tests/test_slack.py"]
+}

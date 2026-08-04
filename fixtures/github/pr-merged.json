@@ -1,0 +1,11 @@
+{
+  "event_type": "github.pull_request.merged",
+  "timestamp": "2026-01-15T16:45:00Z",
+  "repository": "clay-engine",
+  "pr_number": 142,
+  "pr_title": "Add Slack integration for project updates",
+  "pr_url": "https://github.com/clay/clay-engine/pull/142",
+  "merged_by": "ryan",
+  "merge_commit": "a1b2c3d4e5f6",
+  "branch": "feat/slack-integration"
+}

@@ -66,7 +66,12 @@
           "name": {"type": "string", "minLength": 1},
           "type": {"type": "string", "minLength": 1},
           "source_link": {"type": "string", "format": "uri"},
-          "byte_size": {"type": "integer", "minimum": 0}
+          "byte_size": {"type": "integer", "minimum": 0},
+          "text_content": {"type": "string"},
+          "text_content_trust_level": {
+            "type": "string",
+            "enum": ["untrusted", "adapter_extracted", "none"]
+          }
         }
       }
     },

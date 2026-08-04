@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "clay-ops://schemas/project-state",
+  "$comment": "Aggregate project health projection. Derived — never canonical. Recomputed from work_items + events each tick.",
+  "title": "PROJECT_STATE",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "computed_at",
+    "health",
+    "aggregate_state",
+    "active_work_count",
+    "blocked_work_count",
+    "pending_approval_count",
+    "last_meaningful_movement",
+    "current_risks",
+    "next_milestone",
+    "confidence",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0.0"},
+    "project_id": {"type": "string", "pattern": "^proj-"},
+    "computed_at": {"type": "string", "format": "date-time"},
+    "health": {
+      "type": "string",
+      "enum": ["healthy", "attention_needed", "at_risk", "critical"]
+    },
+    "aggregate_state": {
+      "type": "string",
+      "enum": ["backlog", "ready", "active", "blocked", "needs_approval", "done"]
+    },
+    "active_work_count": {"type": "integer", "minimum": 0},
+    "blocked_work_count": {"type": "integer", "minimum": 0},
+    "pending_approval_count": {"type": "integer", "minimum": 0},
+    "last_meaningful_movement": {"type": "string", "format": "date-time"},
+    "current_risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["risk_type", "description", "severity"],
+        "additionalProperties": false,
+        "properties": {
+          "risk_type": {
+            "type": "string",
+            "enum": ["deadline", "blocker_chain", "approval_bottleneck", "stale_work", "resource_constraint", "scope_creep"]
+          },
+          "description": {"type": "string"},
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "critical"]
+          },
+          "detected_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "next_milestone": {
+      "type": "object",
+      "required": ["work_item_id", "title", "due_at", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "work_item_id": {"type": "string", "pattern": "^work-"},
+        "title": {"type": "string"},
+        "due_at": {"type": "string", "format": "date-time"},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["event_id", "event_type", "received_at"],
+        "additionalProperties": false,
+        "properties": {
+          "event_id": {"type": "string", "pattern": "^wev-"},
+          "event_type": {"type": "string"},
+          "received_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "top_blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["work_item_id", "reason", "blocked_since"],
+        "properties": {
+          "work_item_id": {"type": "string"},
+          "reason": {"type": "string"},
+          "blocked_since": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "pending_approvals": {
+      "type": "array",
+      "items": {"type": "string", "pattern": "^wapproval-"}
+    },
+    "next_actions_due": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["work_item_id", "next_action", "due_at"],
+        "properties": {
+          "work_item_id": {"type": "string"},
+          "next_action": {"type": "string"},
+          "due_at": {"type": "string", "format": "date-time"}
+        }
+      }
+    },
+    "last_meaningful_activity_at": {"type": ["string", "null"], "format": "date-time"},
+    "health_signals": {
+      "type": "object",
+      "properties": {
+        "stale_work": {"type": "boolean"},
+        "approval_bottleneck": {"type": "boolean"},
+        "blocker_chain": {"type": "boolean"},
+        "deadline_at_risk": {"type": "boolean"}
+      }
+    }
+  }
+}

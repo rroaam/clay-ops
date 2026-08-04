@@ -1,0 +1,10 @@
+{
+  "event_type": "drive.document.updated",
+  "timestamp": "2026-01-16T08:45:00Z",
+  "workspace": "clay-studios",
+  "document_id": "doc-xyz789",
+  "document_name": "Q3 Growth Planning Canvas",
+  "document_url": "https://docs.google.com/document/d/xyz789",
+  "author": "ryan",
+  "changes": "Added new OKR for Slack integration success metrics"
+}

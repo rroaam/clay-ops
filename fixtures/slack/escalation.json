@@ -1,0 +1,13 @@
+{
+  "event_type": "slack.message",
+  "timestamp": "2026-01-16T10:00:00Z",
+  "workspace": "clay-studios",
+  "channel": "#engineering",
+  "channel_id": "C01ENG",
+  "message_id": "m009",
+  "user": "justin",
+  "text": "@ryan Need decision on blocker - legal approval has been pending 48 hours. Should we proceed without it or wait? This is blocking production deployment.",
+  "thread_ts": null,
+  "mentions": ["ryan", "decision", "blocker", "escalation"],
+  "attachments": []
+}

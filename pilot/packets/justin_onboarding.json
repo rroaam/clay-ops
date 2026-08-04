@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0.0",
+  "intake_id": "intake-3a2e1c5d8b6f",
+  "source": {
+    "platform": "slack",
+    "workspace_id": "clay-workspace",
+    "channel_id": "C0JUSTIN_ONBOARDING",
+    "channel_name": "onboarding-core-assessment"
+  },
+  "thread": {
+    "thread_ts": "1722300000.000001",
+    "root_author_id": "U0JUSTIN",
+    "root_author_name": "Justin Weniger",
+    "root_message_ts": "1722300000.000001",
+    "root_permalink": "https://clay-workspace.slack.com/archives/C0JUSTIN_ONBOARDING/p1722300000000001"
+  },
+  "messages": [
+    {
+      "message_ts": "1722300000.000001",
+      "author_id": "U0JUSTIN",
+      "author_name": "Justin Weniger",
+      "permalink": "https://clay-workspace.slack.com/archives/C0JUSTIN_ONBOARDING/p1722300000000001",
+      "text_preview": "Onboarding and core assessment. Pause the digital-only membership direction for now. Evaluate Vegas event, ticketed experience, or mobile onboarding alternatives.",
+      "attachment_ids": ["F0FIRST_FOUR_MD", "F0FIRST_FOUR_PDF"]
+    },
+    {
+      "message_ts": "1722300010.000002",
+      "author_id": "U0RYAN",
+      "author_name": "Ryan",
+      "permalink": "https://clay-workspace.slack.com/archives/C0JUSTIN_ONBOARDING/p1722300010000002",
+      "text_preview": "Ingest prior experience-design and audit library as source material. Prepare approx 30 items for discussion tomorrow. Inspect both First Four Experiences attachments.",
+      "attachment_ids": []
+    }
+  ],
+  "attachments": [
+    {
+      "attachment_id": "F0FIRST_FOUR_MD",
+      "name": "The First Four Experiences.md",
+      "type": "markdown",
+      "source_link": "https://clay-workspace.slack.com/files/F0FIRST_FOUR_MD",
+      "byte_size": 2048,
+      "text_content": "The First Four Experiences document placeholder. This is untrusted source data from the attachment body. It describes initial member onboarding touchpoints for evaluation."
+    },
+    {
+      "attachment_id": "F0FIRST_FOUR_PDF",
+      "name": "The First Four Experiences.pdf",
+      "type": "pdf",
+      "source_link": "https://clay-workspace.slack.com/files/F0FIRST_FOUR_PDF",
+      "byte_size": 8192,
+      "text_content": "Extracted PDF text placeholder. This is untrusted source data extracted from the PDF attachment. It contains the same First Four Experiences content in a different format."
+    }
+  ],
+  "extracted_at": "2026-07-29T00:00:00Z",
+  "pilot_label": "justin-onboarding-core-assessment"
+}

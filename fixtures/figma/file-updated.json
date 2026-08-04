@@ -1,0 +1,11 @@
+{
+  "event_type": "figma.file.updated",
+  "timestamp": "2026-01-14T15:30:00Z",
+  "workspace": "clay-design",
+  "file_key": "abc123def456",
+  "file_name": "Clay HQ Dashboard v2",
+  "file_url": "https://www.figma.com/file/abc123def456",
+  "author": "maria",
+  "version": "24",
+  "changes": "Updated project card component with new status indicators"
+}

@@ -11,6 +11,8 @@ from jsonschema import Draft202012Validator
 from .canon import CanonRegistry
 from .contracts import ContractError
 from .demo import DemoOrchestrator
+from .slack_adapter import SlackAdapterError
+from .slack_intake import ingest_from_adapter, ingest_from_file
 from .store import OperationalStore
 from .workflows.copy_review import CopyReviewWorkflow
 
@@ -98,6 +100,41 @@ def build_parser():
     choice.add_argument("--reject", action="store_true")
     choice.add_argument("--request-changes", action="store_true")
     resolve.add_argument("--reason")
+    slack = commands.add_parser("slack-intake")
+    slack_group = slack.add_mutually_exclusive_group(required=True)
+    slack_group.add_argument("--file", help="Local packet JSON file for ingestion")
+    slack_group.add_argument("--channel", help="Slack channel_id for live ingestion (requires --thread)")
+    slack.add_argument("--thread", help="Slack message_ts for live ingestion (requires --channel)")
+    slack_check = commands.add_parser("slack-check")
+    slack_check.set_defaults(slack_check=True)
+
+    # Phase 0: Simulation commands
+    sim = commands.add_parser("simulation", help="Phase 0 event simulation")
+    sim.add_argument("--database", default="data/simulation/clay-ops.sim.db",
+                     help="Simulation database path (isolated from production)")
+    sim_sub = sim.add_subparsers(dest="simulation_command", required=True)
+
+    # simulation event-simulate
+    event_sim = sim_sub.add_parser("event-simulate", help="Simulate event ingestion")
+    event_sim_group = event_sim.add_mutually_exclusive_group(required=True)
+    event_sim_group.add_argument("--fixture", help="Path to fixture JSON")
+    event_sim_group.add_argument("--all", action="store_true", help="Process all fixtures in fixtures/ directory")
+    event_sim.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    # simulation project-status
+    proj_status = sim_sub.add_parser("project-status", help="Show project state")
+    proj_status.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    # simulation work-ledger
+    ledger = sim_sub.add_parser("work-ledger", help="Show work ledger")
+    ledger.add_argument("--section", choices=["items", "blockers", "approvals"],
+                       default="items", help="Section to display")
+    ledger.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
+
+    # simulation reset
+    reset = sim_sub.add_parser("reset", help="Reset simulation database")
+    reset.add_argument("--confirm", action="store_true", help="Skip confirmation prompt")
+
     return parser
 
 
@@ -156,9 +193,39 @@ def main(argv=None):
             )
             _print(decision)
             return 0
+        if args.command == "slack-intake":
+            if args.file:
+                result = ingest_from_file(args.file)
+                _print(result["needs_ryan"])
+                return 0
+            if args.channel:
+                if not args.thread:
+                    _print({"status": "error", "codes": ["SLACK_THREAD_REQUIRED"], "message": "--channel requires --thread"})
+                    return 2
+                result = ingest_from_adapter(channel_id=args.channel, thread_ts=args.thread)
+                _print(result["needs_ryan"])
+                return 0
+        if args.command == "slack-check":
+            from .slack_adapter import LiveSlackAdapter, SlackAdapterNotConfiguredError, is_adapter_configured
+            if not is_adapter_configured():
+                _print({"status": "error", "codes": ["SLACK_ADAPTER_NOT_CONFIGURED"], "message": "SLACK_OAUTH_TOKEN not set"})
+                return 1
+            adapter = LiveSlackAdapter()
+            result = adapter.check_connection()
+            if result:
+                _print({"status": "ok", "team_id": result.get("team_id"), "team_name": result.get("team")})
+                return 0
+            _print({"status": "error", "codes": ["SLACK_CONNECTION_FAILED"], "message": "Token validation failed"})
+            return 1
+        if args.command == "simulation":
+            from .simulation_cli import handle_simulation_command
+            return handle_simulation_command(args)
     except (ContractError, OSError, ValueError) as exc:
-        codes = getattr(exc, "codes", ["CLAY_OPS_ERROR"])
+        codes = getattr(exc, "codes", "CLAY_OPS_ERROR")
         _print({"status": "error", "codes": codes, "message": str(exc)})
+        return 2
+    except SlackAdapterError as exc:
+        _print({"status": "error", "codes": exc.codes, "message": str(exc)})
         return 2
     return 1
 

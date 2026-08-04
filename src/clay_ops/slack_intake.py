@@ -18,6 +18,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .redaction import redact
+from .slack_adapter import (
+    LiveSlackAdapter,
+    SlackAdapterNotConfiguredError,
+    SlackAdapterError,
+    is_adapter_configured,
+    load_packet_from_file,
+    sanitize_attachment_text,
+    validate_attachment_metadata,
+)
 from .store import OperationalStore, canonical, sanitize, utc_now
 
 
@@ -264,3 +273,76 @@ def pilot_extraction_rules() -> list[dict]:
             "proposed_destination": "source_registry",
         },
     ]
+
+
+def ingest_from_file(
+    packet_path: str,
+    *,
+    extraction_rules: list[dict] | None = None,
+) -> dict:
+    """Ingest a Slack thread from a local packet file.
+
+    Loads the packet, extracts and classifies candidates using the provided
+    extraction rules (defaults to pilot_extraction_rules if not specified),
+    and returns a Needs Ryan review packet.
+
+    This is the local ingestion path that does not require a live adapter.
+
+    Returns a dict with:
+    - intake_packet: the loaded packet
+    - candidates: extracted and classified candidates
+    - needs_ryan: the review packet projection
+    """
+    packet = load_packet_from_file(packet_path)
+
+    if extraction_rules is None:
+        rules = pilot_extraction_rules()
+    else:
+        rules = extraction_rules
+
+    candidates = extract_candidates(packet, extraction_rules=rules)
+    needs_ryan = build_needs_ryan_packet(packet, candidates)
+
+    return {
+        "intake_packet": packet,
+        "candidates": candidates,
+        "needs_ryan": needs_ryan,
+    }
+
+
+def ingest_from_adapter(
+    *,
+    channel_id: str,
+    thread_ts: str,
+    extraction_rules: list[dict] | None = None,
+) -> dict:
+    """Ingest a Slack thread from the live Slack adapter.
+
+    Fetches the thread and attachments from Slack, extracts and classifies
+    candidates using the provided extraction rules (defaults to
+    pilot_extraction_rules if not specified), and returns a Needs Ryan
+    review packet.
+
+    Raises SlackAdapterNotConfiguredError if SLACK_OAUTH_TOKEN is not set.
+
+    Returns a dict with:
+    - intake_packet: the fetched packet
+    - candidates: extracted and classified candidates
+    - needs_ryan: the review packet projection
+    """
+    adapter = LiveSlackAdapter()
+    packet = adapter.fetch_thread(channel_id=channel_id, thread_ts=thread_ts)
+
+    if extraction_rules is None:
+        rules = pilot_extraction_rules()
+    else:
+        rules = extraction_rules
+
+    candidates = extract_candidates(packet, extraction_rules=rules)
+    needs_ryan = build_needs_ryan_packet(packet, candidates)
+
+    return {
+        "intake_packet": packet,
+        "candidates": candidates,
+        "needs_ryan": needs_ryan,
+    }
