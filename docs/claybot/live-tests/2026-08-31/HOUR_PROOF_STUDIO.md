@@ -82,3 +82,24 @@ Do not put live hub H1 “One member journey. Three connected artifacts.” on a
 Ryan: keep, kill, or type-on-cover.  
 PROOF does not grant clinical, legal, privacy, security, asset-rights, production, or executive approval.  
 No Slack. Idle unless NORTH or ClayBot asks.
+
+---
+
+## Crop check — 2026-08-31 ~2:39 PM PT
+
+STUDIO rewrote **only** `assets/hour-d1-package-cover-3x4.png`. 16:9-named companion unchanged (still 1536×1024). Not Deven deck. No Slack.
+
+| Check | Result |
+| --- | --- |
+| Pixels | **1024×1368** (ratio 0.7485). True 3:4. Prior flag (1536×1024 on the 3:4-named file) is **closed**. |
+| Copies | `assets/` == `generated/images/2026-08-31/` == ClayBot attach. SHA-256 `0f0ac09eb306db5615c9331b14f46cf3bd441e71e4b71bdfd8f0dbf6eeeeb887` |
+| Receipt | Hour crop remake ~2:32 PT. Source still `ee248883e29cf7cc7c8633d136128395e49d9f82848daaa9386b192ff96162e3.png` (generator ignored 3:4; always 1536×1024). Crop 768×1024 at x=520, lanczos to 1024×1368. Prior generation id `137bbd0e…` is the superseded 3:2 file. |
+| Visual | Stacked deckled sheets, hairline square, pencil point. No people, faces, wordmark, type, vials, clinic, screens. Hairline remains a generated graphic, not Deven’s stamp. |
+| Lime | Tight ±18 on 96×128 downscale: **0** `#D9FF78`, **0** `#D8F2A6`, **0** true yellow-green. One downscale pixel near forest `#21301A` is pencil-graphite noise, not a forest-token import. |
+| Status | `GENERATED_REVIEW_ONLY` |
+
+**Crop / usage (3:4 file):** prior `HUMAN DECISION` **cleared for this file**. It can now serve as the portrait packet still.
+
+**16:9-named companion:** still 1536×1024 (3:2). Out of this crop-only re-gate. Same provider crop as TEST 03 parent. Do not treat as locked 16:9.
+
+**Overall hour gate unchanged:** `PASS` as review-only / `BLOCK` publish. TEST 03 still holds. Pair remains fit to sit **with** the Thursday hub: 16:9-named as desktop opener, 3:4 now as portrait opener. Neither replaces FRAME hub chrome. Neither is the Deven deck.

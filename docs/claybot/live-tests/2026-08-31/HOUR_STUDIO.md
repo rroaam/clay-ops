@@ -1,13 +1,14 @@
 # HOUR STUDIO — Thursday package cover (D1 The Reading)
 
-**Written:** 2026-08-31 ~2:24 PM PT  
+**Written:** 2026-08-31 ~2:24 PM PT · **crop remake:** ~2:32 PM PT  
 **Owner:** STUDIO  
 **Status:** `REVIEW_ONLY` · `GENERATED_REVIEW_ONLY` · not for publish · not a send  
 **Handoff:** COMPLETED / READY FOR REVIEW  
-**Blocked:** brand deck to Deven still missing on Drive (rechecked this hour)  
+**Blocked:** brand deck to Deven still missing on Drive  
 **Last-mile:** Ryan review. No Slack. No email. No public social. Do not treat this as the Deven deck.
 
-PROOF TEST 03: PASS as review-only, BLOCK publish. This hour continues that lock.
+PROOF TEST 03: PASS as review-only, BLOCK publish.  
+PROOF crop flag ~2:29 PM PT: both hour stills were 1536×1024 (3:2); the file named 3:4 was not portrait. **3:4 remade as 1024×1368.** 16:9-named file left as desktop companion (still 1536×1024 / 3:2, per ClayBot).
 
 ---
 
@@ -62,14 +63,16 @@ Do not put this type on the stills yet. Type stays Geist / Geist Mono if Ryan la
 
 ## Aspect ratios / crops
 
-| File | Aspect | Role |
-| --- | --- | --- |
-| `assets/hour-d1-package-cover-16x9.png` | 16:9 | Lead hour cover. Pair as landscape card on a second-chapter folder. Sits with desktop package walkthrough. |
-| `assets/hour-d1-package-cover-3x4.png` | 3:4 | Tighter opener crop. Stacked sheet edges + pencil point. Use if the review packet needs a portrait still. |
-| TEST 03 `assets/d1-reading-hero.png` | 16:9 | Parent still. Keep in the same family; do not replace. |
-| TEST 03 `assets/d1-reading-alt-1x1.png` | 1:1 | Keep as square alt. Not regenerated this hour. |
+| File | Named aspect | Actual pixels | Role |
+| --- | --- | --- | --- |
+| `assets/hour-d1-package-cover-16x9.png` | 16:9 | 1536×1024 (3:2) | Desktop companion. Left as-is per ClayBot even though the generator emits 3:2. |
+| `assets/hour-d1-package-cover-3x4.png` | 3:4 | **1024×1368 (3:4)** | Portrait opener. Stacked deckled sheets + hairline + pencil. Remade ~2:32 PM PT. |
+| TEST 03 `assets/d1-reading-hero.png` | 16:9 | (unchanged) | Parent still. Keep in the same family; do not replace. |
+| TEST 03 `assets/d1-reading-alt-1x1.png` | 1:1 | (unchanged) | Square alt. Not regenerated this hour. |
 
-No 9:16 this hour. No motion generated. Sequence if later: hold 16:9, 14–16px rise + fade once (08-24 motion), then still.
+`GenerateImage` ignored 3:4 / 9:16 and emitted 1536×1024. Portrait is a 768×1024 crop (right-of-center) from remake `ee248883e29cf7cc7c8633d136128395e49d9f82848daaa9386b192ff96162e3.png`, scaled lanczos to 1024×1368. Same still-life family. No type, people, wordmark, lime, clinic, or screens.
+
+No 9:16 deliverable. No motion. Sequence if later: hold the desktop companion, 14–16px rise + fade once (08-24 motion), then still.
 
 ## Generated vs approved
 
@@ -88,12 +91,14 @@ Copies live in:
 
 Generation receipt appended in `generated/images/2026-08-31/RECEIPT.md`.
 
-Provider: cursor `GenerateImage`. IDs:
+Provider: cursor `GenerateImage` (always 1536×1024 this hour). IDs:
 
-- 16:9 `29d87b415b8e2922c12765104d6b6e8ac924e812d8dc634f25d665b6e047de33.png`
-- 3:4 `137bbd0eed56bebd21236458ad168c43f5e0e205a90d6c92c92d0051044c7a09.png`
+- 16:9 companion `29d87b415b8e2922c12765104d6b6e8ac924e812d8dc634f25d665b6e047de33.png` (unchanged)
+- 3:4 first pass (landscape, superseded) `137bbd0eed56bebd21236458ad168c43f5e0e205a90d6c92c92d0051044c7a09.png`
+- 3:4 remake source (landscape stacked sheets) `ee248883e29cf7cc7c8633d136128395e49d9f82848daaa9386b192ff96162e3.png`
+- 3:4 **deliverable** `hour-d1-package-cover-3x4.png` = 1024×1368 crop of that remake
 
-Reference still: TEST 03 `d1-reading-hero.png` (world continuity only).
+Reference still: TEST 03 `d1-reading-hero.png` plus the stacked-deckled-sheet family.
 
 ## Claims / rights
 
@@ -120,4 +125,4 @@ STUDIO will not Slack, email, publish, or schedule.
 
 If Ryan keeps D1: one type-on-cover pass on the 16:9 (Geist, no wordmark) after he names the line.  
 Do not build the Deven deck from this still.  
-Do not ping PROOF unless Ryan or ClayBot asks. TEST 03 PASS already covers review-only / BLOCK publish.
+PROOF crop flag addressed. Stay idle unless PROOF flags another remake. No type-on-cover until Ryan names a line. Do not invent the Deven deck.
