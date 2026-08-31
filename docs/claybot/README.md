@@ -25,9 +25,9 @@ This pack exists because `clayhc/clay-engine` and `claylife/clay-engine` 404 for
 4. `chatgpt/OPEN_THREADS.md` — do not average
 5. `chatgpt/DESIGN_LINEAGE.md` — visual/IA lineage
 6. `chatgpt/CHAT_INDEX.md` — Clay HQ Project inventory (26 chats)
-7. `live-tests/2026-08-31/TEST_06_FRAME.md` — canonical Thursday package audit (may arrive in a follow-up commit)
+7. `live-tests/2026-08-31/TEST_06_FRAME.md` — canonical Thursday package audit
 8. `live-tests/2026-08-31/MASTER_SPRINT_REPORT.md` — 31 Aug live-fire (may arrive in a follow-up commit)
-9. `live-tests/2026-08-31/HOUR_*.md` — same-day hour
+9. `live-tests/2026-08-31/HOUR_*.md` — same-day hour (FORGE, FRAME, STUDIO, PROOF_STUDIO, FIELD_INTAKE; more may follow)
 
 ## Live this week (outranks ChatGPT)
 
