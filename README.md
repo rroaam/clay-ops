@@ -6,6 +6,7 @@ Clay Ops is Clay's thin, local-only operational control plane. It stores task/re
 
 ```bash
 uv sync --extra test
+uv run pytest
 uv run clay-ops doctor
 uv run clay-ops validate
 uv run clay-ops workflow list
