@@ -292,6 +292,39 @@ and no public inbound port.
 
 ## 10. The remaining step
 
+**Status as of 2026-09-01, 15:30 PT — the Slack app now exists.**
+
+| Step | State |
+|---|---|
+| App created from the manifest, workspace Clay Health & Care | **done** — App ID `A0BTULLGL3H`, created 2026-09-01 |
+| App-Level Token `north-socket` with `connections:write` | **pending Ryan** |
+| Install to Workspace, OAuth Allow, Bot User OAuth Token | **pending Ryan** |
+| Tokens written to the NORTH profile `.env` | **pending Ryan** |
+| Gateway sync + restart, Socket Mode connect | **automatic once tokens land** |
+
+Everything that does not require Ryan's OAuth approval or secret entry is finished
+and verified. See §12 for the exact activation sequence.
+
+### Independent identity verification, 2026-09-01
+
+The Slack ids in `config/team-access.json` were re-checked against the live
+workspace through an authenticated Slack connector rather than trusted from the
+config. All four people and both channels resolve correctly:
+
+| Key | Slack id | Resolves to | Result |
+|---|---|---|---|
+| ryan | `U0BH7234V9R` | ryan · ryan@designwithroam.com | verified |
+| alex | `U0BJ6DUR2RF` | alex · alex@yano.business | verified |
+| justin | `U0BHA0L3C85` | justin · justin@jweniger.com | verified |
+| deven | `U0BHB9CDL22` | deven · Deven@clayhealthandcare.com | verified |
+| #clay-studios | `C0BH6TA333M` | public, created 2026-07-14 by Rajiv | verified |
+| #joinclay-mvp-landing-page | `C0BHR0BBUEB` | public, created 2026-07-17 by Justin Weniger | verified |
+
+This mattered: a wrong id in `SLACK_ALLOWED_USERS` locks the person out silently,
+because unknown users are ignored rather than refused.
+
+### The browser steps
+
 Everything below happens once, in a browser, as Ryan.
 
 1. Open `https://api.slack.com/apps` and click **Create New App**.
@@ -370,3 +403,130 @@ Adding a person needs their Slack user ID added to `people`, and the
 - The NORTH profile config was backed up before every change, to
   `~/.hermes/profiles/north/config.yaml.pre-team-access.<timestamp>`. The role
   file was backed up the same way.
+
+---
+
+## 12. Activation sequence, post-OAuth
+
+Run in order. Steps 1 and 2 are Ryan's; the rest is mechanical.
+
+### 1. Finish the two tokens in the browser
+
+App is already created (`A0BTULLGL3H`). What remains:
+
+- **Basic Information → App-Level Tokens → Generate Token and Scopes**
+  name `north-socket`, scope `connections:write`, Generate, copy the `xapp-…`.
+- **Install App → Install to Workspace → Allow**, copy the Bot User OAuth Token, the `xoxb-…`.
+
+### 2. Write the tokens
+
+```bash
+~/ClayHQ-Automation/bin/clay-north-slack-tokens
+```
+
+Hidden input, validates the `xoxb-`/`xapp-` prefixes, backs up the old `.env`,
+writes `chmod 600`, and fills in the verified `SLACK_ALLOWED_USERS` line. The
+script never echoes a token and never commits one.
+
+### 3. Enable and restart
+
+```bash
+cd ~/ClayHQ-Automation/clay-ops
+bin/clay-north-gateway-sync          # detects the tokens, flips slack.enabled to true
+hermes -p north gateway restart
+```
+
+Slack stays disabled until both tokens are present, on purpose: Hermes treats a
+missing `SLACK_BOT_TOKEN` as a non-retryable startup conflict and the gateway
+would exit, taking NORTH's scheduled Clay work with it.
+
+### 4. Verify Socket Mode actually connected
+
+```bash
+hermes -p north gateway status
+hermes -p north cron status                       # scheduler must still be alive
+grep -iE "socket|slack" ~/.hermes/profiles/north/logs/gateway.log | tail -20
+```
+
+Expect a Socket Mode connection line and no repeated reconnect errors. Then
+confirm nothing opened a port, which Socket Mode should guarantee:
+
+```bash
+lsof -nP -iTCP -sTCP:LISTEN | grep -vE "127\.0\.0\.1|\[::1\]"   # no new entry
+pgrep -fl "pinggy|ngrok|cloudflared"                            # nothing
+```
+
+### 5. Test in Slack, in this order
+
+1. **DM first.** Slack → **Agents & apps** → **NORTH** → send:
+   `status`
+   Expect the acknowledgement, then one reply ending DONE, READY FOR REVIEW,
+   NEEDS YOUR DECISION, or BLOCKED.
+2. **Then the mention.** In `#clay-studios`: `/invite @NORTH`, then
+   `@NORTH what are the highest-priority Clay items right now?`
+   Expect a threaded reply.
+3. **Then the negative test.** Have someone outside the four DM NORTH. Expect
+   silence, not a refusal: `unknown_user_behavior` is `ignore`.
+
+### 6. If NORTH does not answer
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Gateway exits at startup | token missing or malformed | re-run `bin/clay-north-slack-tokens` |
+| Connects, silent on DM | your Slack id missing from `SLACK_ALLOWED_USERS` | `grep -c U0BH7234V9R ~/.hermes/profiles/north/.env` must be 1 |
+| Silent on channel mention | NORTH not invited | `/invite @NORTH` in that channel |
+| Silent in a new channel | channel not in the allowlist | add id to `config/team-access.json`, re-run sync, restart |
+| Answers DMs, ignores threads | expected | a new top-level channel message needs a mention; follow-ups inside a NORTH thread do not |
+
+---
+
+## 13. Fixes applied 2026-09-01
+
+Found and fixed while completing the non-OAuth work.
+
+### Channel authorization defaulted to allow when the channel was unknown
+
+`admits_surface` guarded the channel allowlist with `channel_id is not None`, so a
+caller that omitted the id skipped the allowlist and was **granted**. An empty
+string denied correctly; `None` did not — so the hole was reachable only through
+the path most likely to be taken by mistake. Now any unidentified channel denies
+with `CHANNEL_NOT_APPROVED`. Two regression tests added.
+
+Not exploitable through Slack today, because the Hermes adapter enforces
+`allowed_channels` independently. It mattered because this layer exists to be the
+check that does not depend on the adapter being right.
+
+### Canon registry could not resolve, 7 tests failing
+
+`config/canon-registry.json` resolves canon at `../clayhc-clay-engine`, relative to
+the clay-ops root. That works when clay-ops sits in `~/dev` beside the existing
+`~/dev/clayhc-clay-engine → ~/dev/clay-engine` symlink; this checkout is at
+`~/ClayHQ-Automation/clay-ops`, so it resolved to nothing.
+
+Fixed by restoring the same convention next to this checkout:
+`~/ClayHQ-Automation/clayhc-clay-engine → ~/dev/clay-engine`. The committed
+registry keeps its provenance-accurate relative path and no machine-specific path
+was baked into the repo.
+
+Verified before repointing: the pinned commit `fe8de676…` exists in the real clone
+and **all four pinned blob hashes match exactly**, so this was purely a path
+problem, not drifted canon.
+
+Result: `182 passed, 0 failed` (was 173 passed, 7 failed). `clay-ops validate` now
+resolves all 4 canon references and reports `pass`.
+
+### A dev server was serving unreleased Clay work to the local network
+
+The Site Improvement Lab run at 11:26 started `next dev --port 3048` in
+`~/dev/clay-engine` and left it running. Next.js binds all interfaces by default,
+so `http://192.168.1.11:3048` returned **HTTP 200** to anything on the Wi-Fi,
+including unmerged review-branch work.
+
+Stopped, and the port is closed. The lab's actual output was preserved: worktree
+`state/worktrees/site-improvement-lab-2026-09-01`, commit `c1299e6`.
+
+Prevented structurally rather than by one prompt: a **Network rules** section now
+sits in `config/clay_shared_context.md`, which compiles into every bot's `SOUL.md`.
+Servers must bind `127.0.0.1`, must be verified with `lsof`, must be stopped before
+the run ends, and no bot may open a tunnel or publish a port on its own. The Site
+Improvement Lab cron prompt carries the same rules explicitly.

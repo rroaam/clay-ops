@@ -160,8 +160,12 @@ class TeamAccess:
             return AccessDecision("*", DENY, "SURFACE_NOT_ALLOWED", f"{person.display_name} may not reach NORTH over {surface}.", person.key)
         if surface == "dm" and not self.document.get("surfaces", {}).get("dm", {}).get("enabled", False):
             return AccessDecision("*", DENY, "SURFACE_DISABLED", "Direct messages with NORTH are disabled.", person.key)
-        if surface in {"channel", "thread"} and channel_id is not None:
-            if str(channel_id).strip() not in self.allowed_channel_ids():
+        if surface in {"channel", "thread"}:
+            # Default-deny: an unidentified channel is not an approved channel.
+            # Treating a missing id as "allow" would let any caller that omits
+            # it bypass the allowlist entirely, which is the opposite of what
+            # this layer is for.
+            if str(channel_id or "").strip() not in self.allowed_channel_ids():
                 return AccessDecision("*", DENY, "CHANNEL_NOT_APPROVED", "NORTH does not work in this channel.", person.key)
         return None
 

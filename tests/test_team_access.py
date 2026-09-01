@@ -503,3 +503,33 @@ def test_gateway_sync_reports_drift(repo_root):
     # Real drift is still drift.
     assert module.normalize(["C1", "C2"]) != module.normalize_reported("- C1")
     assert module.normalize(True) != module.normalize_reported("False")
+
+
+def test_channel_surface_without_a_channel_id_is_denied(access):
+    """An unidentified channel is not an approved channel.
+
+    Regression: `channel_id is not None` meant a caller that omitted the id
+    skipped the allowlist and was granted, inverting default-deny. An empty
+    string was correctly denied while `None` was allowed, so the hole was
+    reachable only through the one path most likely to be taken by mistake.
+    """
+    ryan = "U0BH7234V9R"
+    for surface in ("channel", "thread"):
+        for missing in (None, "", "   "):
+            decision = access.decide(ryan, "ask", surface=surface, channel_id=missing)
+            assert decision.outcome == "deny", f"{surface} with {missing!r} should deny"
+            assert decision.code == "CHANNEL_NOT_APPROVED"
+
+    # The approved channels still work, and DMs are unaffected.
+    assert access.decide(ryan, "ask", surface="channel", channel_id="C0BH6TA333M").allowed
+    assert access.decide(ryan, "ask", surface="thread", channel_id="C0BH6TA333M").allowed
+    assert access.decide(ryan, "ask", surface="dm").allowed
+
+
+def test_disabled_channel_is_not_reachable(access):
+    """#clay-north ships enabled=false with an empty id and must stay closed."""
+    names = {c["name"]: c for c in access.channels()}
+    north = names["#clay-north"]
+    assert north["enabled"] is False and not north["slack_channel_id"].strip()
+    assert "" not in access.allowed_channel_ids()
+    assert len(access.allowed_channel_ids()) == 2
