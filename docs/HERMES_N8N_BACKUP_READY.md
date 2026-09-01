@@ -33,14 +33,17 @@ Both were corrected. See §9.
 
 | | |
 |---|---|
-| Version | Hermes Agent v0.19.1 (2026.7.30) |
+| Version | Hermes Agent **v0.21.0 (2026.8.31)** — updated during this build from v0.19.1 (2026.7.30) |
 | Install | `~/.hermes/hermes-agent` |
 | Python | 3.11.15 |
 | Default model | `claude-sonnet-5` (Anthropic) |
 | Health | `hermes status` clean; `hermes -p north cron status` reports the gateway running with a live ticker heartbeat |
 
-The existing install already exposed the modern capabilities the build needs, so it was left at
-its current version rather than updated. Verified working, each one exercised during the build:
+The install was 4 weeks stale at preflight (v0.19.1, 2026-08-03) against upstream tag
+`v2026.8.31`. Updated via the official `hermes update` path after a full 240 MB backup. The
+update carried the roster forward intact — all nine `SOUL.md` role identities, all fifteen Clay
+skills, the launchd gateway, and the three cron jobs survived — and seeded 10 new and 30 updated
+bundled skills into every Clay profile. Capabilities verified, each exercised during the build:
 
 - **persistent named bots** — `hermes profile create`, nine profiles created
 - **preserved memory and state** — per-profile `SOUL.md`, `.env`, memory, and session store
@@ -149,6 +152,75 @@ Source of truth is `~/ClayHQ-Automation/skills/clay/`. `bin/clay-sync-skills` re
 
 ---
 
+## 6b. Curated third-party skill layer
+
+After the roster was working, the skill registries were surveyed and a **deliberately small**
+set added per role. The selection rule was trust, not popularity — see the security note below.
+
+| Bot | Added | From |
+|---|---|---|
+| NORTH | `one-three-one-rule`, `watchers`, `duckduckgo-search`, `internal-comms` | Nous official, Anthropic |
+| FIELD | `adversarial-ux-test` | Nous official |
+| FRAME | `concept-diagrams`, `frontend-design`, `webapp-testing` | Nous official, Anthropic |
+| STUDIO | `creative-ideation`, `algorithmic-art` | Nous official, Anthropic |
+| FORGE | `pinggy-tunnel`, `docker-management`, `code-wiki`, `webapp-testing` | Nous official, Anthropic |
+| PROOF | `adversarial-ux-test`, `webapp-testing` | Nous official, Anthropic |
+| PAPER | `concept-diagrams`, `pptx-author`, `doc-coauthoring`, `canvas-design` | Nous official, Anthropic |
+| VOICE | `doc-coauthoring`, `internal-comms` | Anthropic |
+| SIGNAL | `duckduckgo-search`, `searxng-search` | Nous official |
+
+The `hermes update` itself also added ten genuinely relevant bundled skills to every bot:
+`competitor-news-monitor`, `sdlc-review`, `github`, `email-inbox-triage`,
+`document-to-action-items`, `meeting-action-items`, `weekly-review-planning`,
+`blocked-page-recovery`, `product-price-monitor`, `box`.
+
+### The capability this actually unlocked
+
+**SIGNAL could not search the web at all.** No Tavily, Firecrawl, Browser Use, or Browserbase
+key is set, so a research bot had no research tool. `duckduckgo-search` plus the `ddgs` CLI
+(installed via `uv tool install ddgs`) is keyless and free. Verified live in smoke Test H:
+SIGNAL produced a cited competitive pack on Function Health, Superpower, and InsideTracker,
+correctly separated observed facts from company claims, flagged one source as a rival's claim
+about a rival, reported a tool quirk honestly (`ddgs -o json` returns empty, plain text works),
+and routed to NORTH as INFORMATION without inventing positioning.
+
+### Security note — why the selection is small
+
+The agent-skill registries are an active supply-chain target. Public reporting through 2026
+documents the **ClawHavoc** campaign poisoning ClawHub with hundreds of malicious skills using
+typosquatted names and delivering the Atomic macOS Stealer; ClawHub removed thousands of
+suspicious entries and added VirusTotal scanning. An independent study found roughly **37% of
+agent skills carry at least one security flaw and 13% at least one critical issue**.
+
+This machine holds the Anthropic API key, a GitHub token with **admin on `claylife/clay-engine`**,
+and Clay canon. Bulk-installing community skills onto it would be reckless, so:
+
+- Every skill installed came from **`official`** (Nous-published, trust `builtin`) or
+  **`anthropics/skills`** (vendor-published, trust `trusted`).
+- **Zero** skills were installed from ClawHub, skills.sh community indexes, or any
+  `community`-trust source.
+- Anthropic's `brand-guidelines` skill was deliberately **skipped** — it applies *Anthropic's*
+  brand, which is exactly wrong for a Clay bot. Relevance was checked per skill, not assumed.
+- `hermes security audit` (OSV.dev) → **no known vulnerabilities across 137 components**.
+- `hermes skills audit` per profile → **0 HIGH or CRITICAL** findings after pruning. The one HIGH
+  it raised beforehand was a false positive: a prose "pitfalls" line in an unrelated TouchDesigner
+  skill mentioning `sudo chmod` in documentation, not code. That skill was removed as irrelevant
+  rather than whitelisted.
+
+### Pruning
+
+Each bot had grown to ~99 skills, most irrelevant (LLM fine-tuning, Philips Hue, Polymarket,
+ASCII video). `bin/clay-prune-skills` removes a documented denylist from the nine Clay profiles
+and leaves the `default` profile alone. Result: 99 entries removed across the roster, skills
+index down from 10.2 KB to 8.3 KB of a 40 KB system prompt.
+
+The point is signal-to-noise, not bytes. A brand bot should not have `pokemon-player` in its
+index competing for attention with `clay-brand-studio`.
+
+**`hermes update` re-seeds bundled skills, so re-run `bin/clay-prune-skills` after every update.**
+
+---
+
 ## 7. Workflows and routines
 
 ### n8n workflows
@@ -197,6 +269,7 @@ with no output when there is nothing new.
 | GitHub (`gh`, identity `rroaam`) | scopes `gist, read:org, repo, workflow`; **admin on `claylife/clay-engine`** |
 | Local Git to `claylife/clay-engine` | fetch and `ls-remote` succeed |
 | Local Git to `rroaam/clay-ops` | fetch and push succeed |
+| **Web search (keyless)** | `ddgs` CLI installed; SIGNAL returned a cited competitive pack in Test H |
 | **n8n owner account** | Ryan signed in 2026-08-31 as `ryan@designwithroam.com`; all six workflows are owned by his personal project `PLNpEVCfzUU3Q6h8` |
 
 ### AUTH_REQUIRED
@@ -316,6 +389,7 @@ Full transcripts are in `~/ClayHQ-Automation/reports/smoke/`.
 | E | FORGE | **PASS** | Branched off `main`, updated `REPO_ACCESS_GAP.md` from real verification, ran the repo's real checks, **reported failures honestly**, did not merge, did not push, left `clay-engine` untouched |
 | F | PROOF | **PASS** | Independently re-verified claims from A–E against the real repos and caught three genuine citation errors the other bots made |
 | G | n8n | **PASS** | 13 mock Slack, email, and GitHub events injected; all 13 classified correctly, 4 noise dropped silently, 9 NORTH intake packets written with correct routing and priority lanes |
+| H | SIGNAL | **PASS** | Live web search after the skill-layer build: cited pack on three real Clay comps, observed separated from claimed, a biased source flagged, a tool quirk reported honestly, routed as INFORMATION without inventing positioning |
 
 ### What PROOF caught
 
@@ -384,6 +458,11 @@ curl -s -X POST http://127.0.0.1:5678/webhook/clay/slack \
    either a credential or a publicly reachable URL. The classification and routing layer is
    fully built and tested with injected events, but nothing real flows in yet. This is the
    single biggest gap between "built" and "running."
+
+   FORGE now carries the `pinggy-tunnel` skill, which is the mechanism for the URL half. It was
+   **deliberately not run**: opening a tunnel publishes the local n8n to the internet, which is
+   a security exposure and a human decision, not a reversible setup choice. The Slack half needs
+   a credential regardless.
 2. **No n8n API key issued yet.** The owner account exists, so one can be created in
    Settings → API. Without it, workflow changes go through the container CLI
    (`docker exec clay-n8n n8n import:workflow`), which cannot update a workflow in place —
@@ -411,8 +490,9 @@ curl -s -X POST http://127.0.0.1:5678/webhook/clay/slack \
 ## 15. Next recommended improvements
 
 1. **Connect one real event source.** Slack first, since `#clay-studios` is where the work
-   actually happens. A tunnel plus a Slack app with event subscriptions is the smallest change
-   that turns this from tested to live.
+   actually happens. Both halves are now within reach: FORGE has `pinggy-tunnel` for the public
+   URL, and the webhook endpoint is already live and tested. What is missing is your decision to
+   expose it and a Slack app credential.
 2. **Fix `config/canon-registry.json`.** Seven failing tests and a failing `validate` all trace
    to one wrong path. Cheapest high-value fix on the list.
 3. **Decide what `main` means in `clay-engine`.** It is 8.5 weeks stale and missing the top
@@ -428,6 +508,11 @@ curl -s -X POST http://127.0.0.1:5678/webhook/clay/slack \
 7. **Back up the n8n encryption key** somewhere private before adding any n8n credential. Losing
    it makes stored credentials unrecoverable.
 8. **Watch disk.** 20 GB free is enough for now and not for much more.
+9. **Re-run `bin/clay-prune-skills` after every `hermes update`.** Updates re-seed the full
+   bundled skill set into all nine Clay profiles, undoing the prune.
+10. **Keep installing from `official` and `anthropics/skills` only.** The community registries
+    are an active supply-chain target; see the security note in §6b. This machine holds the
+    Anthropic key and a GitHub admin token.
 
 ---
 
