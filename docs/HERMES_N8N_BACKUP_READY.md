@@ -65,6 +65,7 @@ Hermes `config.yaml`, `SOUL.md`, `auth.json`, `.env`, and the Docker Desktop set
 | Restart policy | `always` |
 | Persistence | `~/ClayHQ-Automation/n8n/data` bind mount (SQLite, credentials, logs) |
 | Health check | `curl -s http://127.0.0.1:5678/healthz` → `{"status":"ok"}`; container reports `(healthy)` |
+| Owner account | `ryan@designwithroam.com`, signed in 2026-08-31; all six workflows owned by his personal project |
 | Encryption key | generated locally into `~/ClayHQ-Automation/n8n/.env`, chmod 600, gitignored |
 
 Telemetry, version notifications, templates, and personalization are disabled. No credentials
@@ -196,6 +197,7 @@ with no output when there is nothing new.
 | GitHub (`gh`, identity `rroaam`) | scopes `gist, read:org, repo, workflow`; **admin on `claylife/clay-engine`** |
 | Local Git to `claylife/clay-engine` | fetch and `ls-remote` succeed |
 | Local Git to `rroaam/clay-ops` | fetch and push succeed |
+| **n8n owner account** | Ryan signed in 2026-08-31 as `ryan@designwithroam.com`; all six workflows are owned by his personal project `PLNpEVCfzUU3Q6h8` |
 
 ### AUTH_REQUIRED
 
@@ -205,7 +207,6 @@ with no output when there is nothing new.
 | **Email** | A Gmail or IMAP credential in n8n, then swap the webhook trigger for the mail trigger | Same: live and testable, no real mail |
 | **GitHub webhooks** | Register a webhook on `claylife/clay-engine` and `rroaam/clay-ops` against a reachable URL | `gh` CLI already has the scope to register one; blocked only on a public URL |
 | **Notion** | A Notion credential for the Clay workspace | Workflow ships **disabled** on purpose |
-| **n8n owner account** | First visit to `http://127.0.0.1:5678` sets an email and password | The UI cannot be opened until a human sets it. Everything else — webhooks, schedules, executions, CLI — works without it |
 | **Google Drive** | Not connected from this stack | The Drive briefs in `SOURCE_INDEX.md` cannot be read automatically |
 | **Figma** | Current canonical master still unidentified for this identity | FRAME works from code, not Figma |
 | **Vercel** | Not configured in this stack | Preview deployments are not driven from here |
@@ -383,8 +384,10 @@ curl -s -X POST http://127.0.0.1:5678/webhook/clay/slack \
    either a credential or a publicly reachable URL. The classification and routing layer is
    fully built and tested with injected events, but nothing real flows in yet. This is the
    single biggest gap between "built" and "running."
-2. **n8n's UI needs an owner account.** A human must set it on first visit. Everything
-   non-UI works without it.
+2. **No n8n API key issued yet.** The owner account exists, so one can be created in
+   Settings → API. Without it, workflow changes go through the container CLI
+   (`docker exec clay-n8n n8n import:workflow`), which cannot update a workflow in place —
+   re-importing creates duplicates. Not blocking, just clumsy.
 3. **The intake drain is a 15-minute cron, not an event hook.** n8n cannot call the host Hermes
    binary from inside Docker. A webhook listener on the host would make this instant; the cron is
    the reliable version, not the fastest one.
@@ -461,12 +464,11 @@ The default Hermes profile at `~/.hermes` is likewise unchanged: stock `SOUL.md`
 
 1. **Slack, email, and Notion credentials** — the stack is built and tested but no real signal
    flows until one connector is authenticated.
-2. **The n8n owner account** — one-time, at `http://127.0.0.1:5678`.
-3. **The canon-registry path decision** — repoint, relocate, or symlink.
-4. **What `main` means in `clay-engine`** — and where `docs/DESIGN_AUTHORITY.md` should live.
-5. **The journey-lock conflicts FIELD surfaced** — seven of them, with receipts on both sides,
+2. **The canon-registry path decision** — repoint, relocate, or symlink.
+3. **What `main` means in `clay-engine`** — and where `docs/DESIGN_AUTHORITY.md` should live.
+4. **The journey-lock conflicts FIELD surfaced** — seven of them, with receipts on both sides,
    none resolvable without a decision. Details in `reports/smoke/test-B-field.txt`.
-6. **Review of `review/repo-access-confirmed-2026-08-31`** — pushed, not merged.
+5. **Review of `review/repo-access-confirmed-2026-08-31`** — pushed, not merged.
 
 Nothing in this build was merged, deployed, published, promoted, or sent. No purchase was made
 and no permission was changed.
