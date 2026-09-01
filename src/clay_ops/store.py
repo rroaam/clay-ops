@@ -65,6 +65,12 @@ class OperationalStore:
             CREATE INDEX IF NOT EXISTS creative_assets_project_idx ON creative_assets(project_id, created_at);
             CREATE INDEX IF NOT EXISTS generation_requests_project_idx ON generation_requests(project_id, created_at);
             CREATE INDEX IF NOT EXISTS creative_contexts_project_idx ON creative_contexts(project_id, updated_at);
+            CREATE TABLE IF NOT EXISTS work_items(work_item_id TEXT PRIMARY KEY, requester TEXT NOT NULL, requester_slack_id TEXT NOT NULL, surface TEXT NOT NULL, channel_id TEXT NOT NULL, thread_id TEXT NOT NULL, requested_outcome TEXT NOT NULL, status TEXT NOT NULL, document TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS work_item_events(work_item_event_id TEXT PRIMARY KEY, work_item_id TEXT NOT NULL REFERENCES work_items(work_item_id), sequence INTEGER NOT NULL, event_type TEXT NOT NULL, status TEXT NOT NULL, actor TEXT NOT NULL, recorded_at TEXT NOT NULL, payload TEXT NOT NULL, previous_hash TEXT NOT NULL, record_hash TEXT NOT NULL, UNIQUE(work_item_id,sequence));
+            CREATE INDEX IF NOT EXISTS work_items_thread_idx ON work_items(channel_id, thread_id, created_at);
+            CREATE INDEX IF NOT EXISTS work_items_requester_idx ON work_items(requester, created_at);
+            CREATE TRIGGER IF NOT EXISTS work_item_events_no_update BEFORE UPDATE ON work_item_events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_WORK_ITEM_EVENTS'); END;
+            CREATE TRIGGER IF NOT EXISTS work_item_events_no_delete BEFORE DELETE ON work_item_events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_WORK_ITEM_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT,'IMMUTABLE_EVENTS'); END;
             CREATE TRIGGER IF NOT EXISTS decisions_no_update BEFORE UPDATE ON approval_decisions BEGIN SELECT RAISE(ABORT,'IMMUTABLE_APPROVAL_DECISIONS'); END;
@@ -395,3 +401,91 @@ class OperationalStore:
         if table not in keys:
             raise ValueError("Unsupported table")
         self._execute(f"DELETE FROM {table} WHERE {keys[table]}=?", (record_id,))
+
+    # ── work items (Clay team access ledger) ───────────────────────────────
+
+    def create_work_item(self, work_item_id, requester, requester_slack_id, surface, channel_id, thread_id, requested_outcome, document, status="received"):
+        created = utc_now()
+        value = sanitize(document)
+        self._execute(
+            "INSERT INTO work_items VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (work_item_id, requester, requester_slack_id, surface, str(channel_id or ""), str(thread_id or ""), redact(str(requested_outcome)), status, canonical(value), created, created),
+        )
+        return {"work_item_id": work_item_id, "status": status, "created_at": created, "updated_at": created}
+
+    def append_work_item_event(self, work_item_id, event_type, status, payload, actor="north"):
+        payload = sanitize(payload)
+        standalone = self._transaction_depth == 0
+        if standalone:
+            self.db.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.db.execute("SELECT sequence,record_hash FROM work_item_events WHERE work_item_id=? ORDER BY sequence DESC LIMIT 1", (work_item_id,)).fetchone()
+            sequence = row["sequence"] + 1 if row else 1
+            previous = row["record_hash"] if row else "GENESIS"
+            event_id = f"wievent-{uuid.uuid4().hex}"
+            recorded = utc_now()
+            basis = {"schema_version": SCHEMA_VERSION, "work_item_event_id": event_id, "work_item_id": work_item_id, "sequence": sequence, "event_type": event_type, "status": status, "actor": actor, "recorded_at": recorded, "payload": payload, "previous_hash": previous}
+            basis["record_hash"] = hashlib.sha256(canonical(basis).encode()).hexdigest()
+            self.db.execute("INSERT INTO work_item_events VALUES(?,?,?,?,?,?,?,?,?,?)", (event_id, work_item_id, sequence, event_type, status, actor, recorded, canonical(payload), previous, basis["record_hash"]))
+            if standalone:
+                self.db.commit()
+            return basis
+        except Exception:
+            if standalone:
+                self.db.rollback()
+            raise
+
+    def set_work_item_status(self, work_item_id, status, document=None):
+        updated = utc_now()
+        if document is None:
+            self._execute("UPDATE work_items SET status=?, updated_at=? WHERE work_item_id=?", (status, updated, work_item_id))
+        else:
+            self._execute("UPDATE work_items SET status=?, document=?, updated_at=? WHERE work_item_id=?", (status, canonical(sanitize(document)), updated, work_item_id))
+        return {"work_item_id": work_item_id, "status": status, "updated_at": updated}
+
+    def get_work_item(self, work_item_id):
+        row = self.db.execute("SELECT * FROM work_items WHERE work_item_id=?", (work_item_id,)).fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        item["document"] = json.loads(item["document"])
+        return item
+
+    def find_work_item_by_thread(self, channel_id, thread_id):
+        """Return the most recent work item anchored to a Slack thread.
+
+        An empty ``thread_id`` never matches: a top-level message that has not
+        started a thread is a new request, not a continuation of an older one.
+        """
+        thread_id = str(thread_id or "").strip()
+        if not thread_id:
+            return None
+        row = self.db.execute(
+            "SELECT work_item_id FROM work_items WHERE channel_id=? AND thread_id=? ORDER BY created_at DESC LIMIT 1",
+            (str(channel_id or ""), thread_id),
+        ).fetchone()
+        return self.get_work_item(row["work_item_id"]) if row else None
+
+    def list_work_items(self, requester=None, status=None):
+        sql = "SELECT work_item_id FROM work_items"
+        clauses, params = [], []
+        if requester is not None:
+            clauses.append("requester=?")
+            params.append(requester)
+        if status is not None:
+            clauses.append("status=?")
+            params.append(status)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC"
+        return [self.get_work_item(row["work_item_id"]) for row in self.db.execute(sql, params).fetchall()]
+
+    def list_work_item_events(self, work_item_id):
+        rows = self.db.execute("SELECT * FROM work_item_events WHERE work_item_id=? ORDER BY sequence", (work_item_id,)).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["schema_version"] = SCHEMA_VERSION
+            item["payload"] = json.loads(item["payload"])
+            result.append(item)
+        return result

@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Build the NORTH Slack app manifest.
+
+Takes the Hermes-generated manifest and makes it Clay's:
+
+- every slash command is removed. The team talks to NORTH in sentences, and
+  the generated commands are named after engine internals (/hermes, /model,
+  /compress). None of that vocabulary belongs in the Clay workspace.
+- the display and assistant copy is rewritten in Clay language.
+- Socket Mode is asserted, and any inbound request URL is treated as a build
+  failure. NORTH must never require a public inbound port.
+
+Usage: bin/clay-north-slack-manifest [--profile north] [--check]
+       --check verifies the committed manifest is current and writes nothing.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TARGET = ROOT / "integrations/slack/north-app-manifest.json"
+
+NAME = "NORTH"
+DESCRIPTION = "Clay AI Chief of Staff"
+LONG_DESCRIPTION = (
+    "NORTH is the Clay team's single front door to the Clay AI system. Ask NORTH a question, "
+    "request research, ask for product, design, or copy work, request an implementation on a "
+    "review branch, or ask where something stands. NORTH runs the work internally and brings "
+    "one finished answer back to the same thread. Work that takes time gets an immediate "
+    "acknowledgement first, then a single reply marked DONE, READY FOR REVIEW, NEEDS YOUR "
+    "DECISION, or BLOCKED. NORTH completes everything reversible on its own. Anything that "
+    "needs production, publishing, spend, or access authority is prepared in full and then "
+    "handed to the right approver rather than being dropped."
+)
+ASSISTANT_DESCRIPTION = "Ask NORTH for Clay work, research, status, or a review."
+BACKGROUND_COLOR = "#141414"
+
+
+def generate(profile: str) -> dict:
+    proc = subprocess.run(
+        ["hermes", "-p", profile, "slack", "manifest", "--name", NAME, "--description", DESCRIPTION],
+        capture_output=True, text=True, check=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def clay_brand(manifest: dict) -> dict:
+    display = manifest.setdefault("display_information", {})
+    display["name"] = NAME
+    display["description"] = DESCRIPTION
+    display["long_description"] = LONG_DESCRIPTION
+    display["background_color"] = BACKGROUND_COLOR
+
+    features = manifest.setdefault("features", {})
+    features.setdefault("bot_user", {})["display_name"] = NAME
+    features["bot_user"]["always_online"] = True
+
+    # Drop every generated slash command. Engine vocabulary stays off Slack.
+    features.pop("slash_commands", None)
+    if "assistant_view" in features:
+        features["assistant_view"]["assistant_description"] = ASSISTANT_DESCRIPTION
+
+    # `commands` scope only exists to serve slash commands we just removed.
+    scopes = manifest.get("oauth_config", {}).get("scopes", {})
+    if "bot" in scopes:
+        scopes["bot"] = [s for s in scopes["bot"] if s != "commands"]
+
+    return manifest
+
+
+def assert_no_public_inbound(manifest: dict) -> None:
+    settings = manifest.get("settings", {})
+    if settings.get("socket_mode_enabled") is not True:
+        raise SystemExit("REFUSED: socket_mode_enabled must be true. NORTH does not open an inbound port.")
+    blob = json.dumps(manifest)
+    for marker in ("request_url", "\"url\"", "ngrok", "pinggy", "trycloudflare", "loca.lt"):
+        if marker in blob:
+            raise SystemExit(f"REFUSED: manifest contains {marker!r}. NORTH must reach Slack over Socket Mode only.")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--profile", default="north")
+    parser.add_argument("--check", action="store_true", help="Verify the committed manifest is current; write nothing.")
+    args = parser.parse_args()
+
+    manifest = assert_and_build(args.profile)
+    rendered = json.dumps(manifest, indent=2) + "\n"
+
+    if args.check:
+        if not TARGET.is_file():
+            print(f"MISSING {TARGET}")
+            return 1
+        if TARGET.read_text(encoding="utf-8") != rendered:
+            print(f"STALE {TARGET} — re-run bin/clay-north-slack-manifest")
+            return 1
+        print(f"current {TARGET.relative_to(ROOT)}")
+        return 0
+
+    TARGET.parent.mkdir(parents=True, exist_ok=True)
+    TARGET.write_text(rendered, encoding="utf-8")
+    print(f"wrote {TARGET.relative_to(ROOT)}")
+    return 0
+
+
+def assert_and_build(profile: str) -> dict:
+    manifest = clay_brand(generate(profile))
+    assert_no_public_inbound(manifest)
+    return manifest
+
+
+if __name__ == "__main__":
+    sys.exit(main())

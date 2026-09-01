@@ -1,0 +1,243 @@
+{
+  "schema_version": "1.0.0",
+  "policy_id": "clay-team-access-v1",
+  "description": "Clay team access to NORTH. This file is the only place role, surface, and approval mappings are edited. Nothing here is duplicated in Python.",
+  "front_door": {
+    "bot": "NORTH",
+    "display_name": "NORTH",
+    "tagline": "Clay AI Chief of Staff",
+    "transport": "slack-socket-mode",
+    "public_inbound_port": false,
+    "specialists_slack_visible": false,
+    "specialists": [
+      "FIELD",
+      "FRAME",
+      "STUDIO",
+      "FORGE",
+      "PROOF",
+      "PAPER",
+      "VOICE",
+      "SIGNAL"
+    ]
+  },
+  "capabilities": {
+    "ask": {
+      "label": "Ask NORTH questions",
+      "reversible": true
+    },
+    "request_research": {
+      "label": "Request research",
+      "reversible": true
+    },
+    "request_work": {
+      "label": "Request product, design, or copy work",
+      "reversible": true
+    },
+    "request_implementation": {
+      "label": "Request implementation on a review branch",
+      "reversible": true
+    },
+    "receive_status": {
+      "label": "Receive status",
+      "reversible": true
+    },
+    "receive_previews": {
+      "label": "Receive previews and artifact links",
+      "reversible": true
+    },
+    "review": {
+      "label": "Review work and request revisions",
+      "reversible": true
+    },
+    "approve_production": {
+      "label": "Approve production merge or deploy",
+      "reversible": false
+    },
+    "approve_publish_send": {
+      "label": "Approve publishing or external sending",
+      "reversible": false
+    },
+    "approve_health_claim": {
+      "label": "Approve a healthcare or outcome claim",
+      "reversible": false
+    },
+    "change_permissions": {
+      "label": "Change access or permissions",
+      "reversible": false
+    },
+    "credential_access": {
+      "label": "Access credentials",
+      "reversible": false
+    },
+    "authorize_spend": {
+      "label": "Authorize spend or purchases",
+      "reversible": false
+    },
+    "destructive": {
+      "label": "Irreversible deletion",
+      "reversible": false
+    }
+  },
+  "roles": {
+    "operator": {
+      "label": "AI system operator. Ultimate authority over the Clay AI system.",
+      "grants": [
+        "ask",
+        "request_research",
+        "request_work",
+        "request_implementation",
+        "receive_status",
+        "receive_previews",
+        "review",
+        "approve_production",
+        "approve_publish_send",
+        "change_permissions",
+        "credential_access",
+        "authorize_spend",
+        "destructive"
+      ],
+      "surfaces": [
+        "dm",
+        "channel",
+        "thread"
+      ]
+    },
+    "team": {
+      "label": "Clay team member. Safe work and review access.",
+      "grants": [
+        "ask",
+        "request_research",
+        "request_work",
+        "request_implementation",
+        "receive_status",
+        "receive_previews",
+        "review"
+      ],
+      "surfaces": [
+        "dm",
+        "channel",
+        "thread"
+      ]
+    }
+  },
+  "approvers": {
+    "approve_production": [
+      "ryan"
+    ],
+    "approve_publish_send": [
+      "ryan"
+    ],
+    "change_permissions": [
+      "ryan"
+    ],
+    "credential_access": [
+      "ryan"
+    ],
+    "authorize_spend": [
+      "ryan"
+    ],
+    "destructive": [
+      "ryan"
+    ],
+    "approve_health_claim": []
+  },
+  "approver_notes": {
+    "approve_health_claim": "Clay has no named clinical claims authority, so this claim cannot be cleared by anyone here. It stays held until a clinical authority is named."
+  },
+  "approver_rationale": {
+    "approve_health_claim": "Operating invariant 7: an unresolved healthcare or outcome claim never receives clinical approval from Ryan alone. Naming Ryan as the approver here would be wrong, so the capability ships with an empty approver list and reports BLOCKED rather than NEEDS YOUR DECISION."
+  },
+  "people": [
+    {
+      "key": "ryan",
+      "display_name": "Ryan",
+      "role": "operator",
+      "slack_user_id": "U0BH7234V9R",
+      "slack_workspace": "clayhc.slack.com",
+      "email": "ryan@designwithroam.com",
+      "identity_resolved": "2026-09-01 from the Clay Slack workspace directory"
+    },
+    {
+      "key": "alex",
+      "display_name": "Alex",
+      "role": "team",
+      "slack_user_id": "U0BJ6DUR2RF",
+      "slack_workspace": "clayhc.slack.com",
+      "email": "alex@yano.business",
+      "identity_resolved": "2026-09-01 from the Clay Slack workspace directory"
+    },
+    {
+      "key": "justin",
+      "display_name": "Justin",
+      "role": "team",
+      "slack_user_id": "U0BHA0L3C85",
+      "slack_workspace": "clayhc.slack.com",
+      "email": "justin@jweniger.com",
+      "identity_resolved": "2026-09-01 from the Clay Slack workspace directory"
+    },
+    {
+      "key": "deven",
+      "display_name": "Deven",
+      "role": "team",
+      "slack_user_id": "U0BHB9CDL22",
+      "slack_workspace": "clayhc.slack.com",
+      "email": "Deven@clayhealthandcare.com",
+      "identity_resolved": "2026-09-01 from the Clay Slack workspace directory"
+    }
+  ],
+  "surfaces": {
+    "dm": {
+      "enabled": true,
+      "requires_mention": false,
+      "note": "Direct message with NORTH. Open to anyone in people[]; everyone else is ignored silently."
+    },
+    "channels": [
+      {
+        "name": "#clay-studios",
+        "slack_channel_id": "C0BH6TA333M",
+        "enabled": true,
+        "requires_mention": true,
+        "note": "Existing working channel. NORTH answers only when mentioned, and replies in-thread."
+      },
+      {
+        "name": "#joinclay-mvp-landing-page",
+        "slack_channel_id": "C0BHR0BBUEB",
+        "enabled": true,
+        "requires_mention": true,
+        "note": "Existing working channel. Mention-only."
+      },
+      {
+        "name": "#clay-north",
+        "slack_channel_id": "",
+        "enabled": false,
+        "requires_mention": false,
+        "note": "Dedicated NORTH channel. Does not exist yet. Ryan creates it and pastes the channel id here, then sets enabled true. Free-response is safe here because the channel exists for NORTH."
+      }
+    ],
+    "threading": {
+      "reply_in_thread": true,
+      "thread_requires_mention": false,
+      "note": "One task stays in one thread. A follow-up inside an existing NORTH thread continues that work item without needing another mention; a new top-level channel message still needs a mention."
+    }
+  },
+  "conversation": {
+    "acknowledgement": "I'm on it. I'll bring the finished work back here.",
+    "terminal_states": [
+      "DONE",
+      "READY FOR REVIEW",
+      "NEEDS YOUR DECISION",
+      "BLOCKED"
+    ],
+    "async_threshold_note": "Anything that needs a specialist gets the acknowledgement immediately, then one finished reply in the same thread.",
+    "never_expose": [
+      "profiles",
+      "cron",
+      "n8n",
+      "worktrees",
+      "MCP",
+      "model providers",
+      "specialist transcripts"
+    ]
+  },
+  "unknown_user_behavior": "ignore"
+}

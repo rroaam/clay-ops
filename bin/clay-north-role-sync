@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Inject the team-access behavior contract into NORTH's role file.
+
+The contract is versioned here in clay-ops. The role file it lands in lives in
+~/ClayHQ-Automation/config/roles/north.md, which is not a repository, so this
+script keeps the two in step instead of leaving a hand-copied duplicate to
+drift. It rewrites only the block between the markers.
+
+  bin/clay-north-role-sync            inject or refresh
+  bin/clay-north-role-sync --check    report drift, write nothing
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "integrations/slack/north-team-access.md"
+ROLE_FILE = Path.home() / "ClayHQ-Automation/config/roles/north.md"
+
+BEGIN = "<!-- BEGIN team-access (generated from clay-ops/integrations/slack/north-team-access.md) -->"
+END = "<!-- END team-access -->"
+
+
+def block() -> str:
+    return f"{BEGIN}\n\n{SOURCE.read_text(encoding='utf-8').strip()}\n\n{END}"
+
+
+def compose(existing: str) -> str:
+    new_block = block()
+    if BEGIN in existing and END in existing:
+        head = existing[: existing.index(BEGIN)]
+        tail = existing[existing.index(END) + len(END) :]
+        return f"{head}{new_block}{tail}"
+    return f"{existing.rstrip()}\n\n{new_block}\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+
+    if not SOURCE.is_file():
+        print(f"MISSING {SOURCE}")
+        return 1
+    if not ROLE_FILE.is_file():
+        print(f"MISSING {ROLE_FILE}")
+        return 1
+
+    existing = ROLE_FILE.read_text(encoding="utf-8")
+    updated = compose(existing)
+
+    if args.check:
+        if existing != updated:
+            print(f"STALE {ROLE_FILE} — re-run bin/clay-north-role-sync")
+            return 1
+        print(f"current {ROLE_FILE}")
+        return 0
+
+    if existing == updated:
+        print(f"unchanged {ROLE_FILE}")
+        return 0
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = ROLE_FILE.with_suffix(f".md.pre-team-access.{stamp}")
+    shutil.copy2(ROLE_FILE, backup)
+    ROLE_FILE.write_text(updated, encoding="utf-8")
+    print(f"backed up {backup}")
+    print(f"updated {ROLE_FILE}")
+    print("Now run: ~/ClayHQ-Automation/bin/clay-sync-souls")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

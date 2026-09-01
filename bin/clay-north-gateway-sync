@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Apply team access to the NORTH Slack gateway.
+
+`config/team-access.json` is the source. This script projects it onto the
+NORTH profile through Hermes's own `config set`, so the gateway never holds a
+second, drifting copy of the roster.
+
+It writes configuration only. It never writes a .env file: the two Slack
+tokens are secrets, and the user allowlist has to live beside them, so those
+lines are printed for you to paste once.
+
+  bin/clay-north-gateway-sync            apply
+  bin/clay-north-gateway-sync --check    report drift, write nothing
+  bin/clay-north-gateway-sync --dry-run  print the commands only
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+
+try:
+    from clay_ops.team_access import TeamAccess, slack_gateway_settings
+except ModuleNotFoundError:
+    # Re-exec under the repo virtualenv so the script works from bin/ directly
+    # as well as under `uv run`.
+    venv_python = ROOT / ".venv/bin/python"
+    if venv_python.is_file() and Path(sys.executable).resolve() != venv_python.resolve():
+        import os
+        os.execv(str(venv_python), [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]])
+    raise
+
+PROFILE = "north"
+PROFILE_HOME = Path.home() / ".hermes/profiles" / PROFILE
+
+
+def flatten(settings: dict) -> list[tuple[str, object]]:
+    """Turn the derived config into ordered (key, value) pairs for `config set`."""
+    cfg = settings["config_yaml"]
+    pairs: list[tuple[str, object]] = []
+    slack = cfg["platforms"]["slack"]
+    for key, value in slack.items():
+        if key == "extra":
+            continue
+        pairs.append((f"platforms.slack.{key}", value))
+    for key, value in slack["extra"].items():
+        pairs.append((f"platforms.slack.extra.{key}", value))
+    for key in ("unauthorized_dm_behavior", "group_sessions_per_user", "thread_sessions_per_user"):
+        pairs.append((key, cfg[key]))
+    return pairs
+
+
+def render(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, dict)):
+        return json.dumps(value)
+    return str(value)
+
+
+def tokens_present(settings: dict) -> tuple[bool, list[str]]:
+    """Whether every required Slack secret is set in the NORTH profile .env.
+
+    Reads key names and emptiness only. No value is returned, printed, or
+    logged. Placeholder text left from the template counts as missing.
+    """
+    env_file = PROFILE_HOME / ".env"
+    present: set[str] = set()
+    if env_file.is_file():
+        for raw in env_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, _, value = line.partition("=")
+            value = value.strip().strip("'\"")
+            if value and not value.startswith("<") and value != "<redacted>":
+                present.add(name.strip())
+    required = list(settings["secrets_required"])
+    missing = [name for name in required if name not in present]
+    return (not missing), missing
+
+
+def normalize(value: object) -> object:
+    """Comparable form of a value we intend to write."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    return str(value)
+
+
+def normalize_reported(text: str) -> object:
+    """Comparable form of what `hermes config get` printed back.
+
+    Lists come back as YAML block sequences, booleans as True/False, and an
+    empty list as an empty string, so compare structurally rather than by
+    string equality.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return []
+    lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+    if all(line.startswith("- ") for line in lines):
+        return [line[2:].strip().strip("'\"") for line in lines]
+    if len(lines) == 1:
+        single = lines[0]
+        if single in {"True", "true"}:
+            return True
+        if single in {"False", "false"}:
+            return False
+        if single == "[]":
+            return []
+        return single.strip("'\"")
+    return stripped
+
+
+def hermes(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["hermes", "-p", PROFILE, *args], capture_output=True, text=True)
+
+
+def current(key: str) -> str:
+    proc = hermes("config", "get", key)
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--check", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--enable", action="store_true", help="Turn Slack on even if the tokens are not detected yet.")
+    args = parser.parse_args()
+
+    access = TeamAccess(ROOT / "config/team-access.json")
+    settings = slack_gateway_settings(access)
+
+    # Enabling Slack without its tokens is not a harmless no-op: the gateway
+    # treats a missing SLACK_BOT_TOKEN as a non-retryable startup conflict and
+    # exits, which also stops the Clay scheduled work NORTH runs. So stage all
+    # the settings, and only flip `enabled` once the secrets are actually
+    # there. --enable overrides for the case where you know better.
+    ready, missing = tokens_present(settings)
+    if not (ready or args.enable):
+        settings["config_yaml"]["platforms"]["slack"]["enabled"] = False
+
+    pairs = flatten(settings)
+
+    if settings["public_inbound_port"] is not False or settings["transport"] != "socket_mode":
+        print("REFUSED: NORTH must reach Slack over Socket Mode with no inbound port.")
+        return 1
+
+    if not PROFILE_HOME.is_dir():
+        print(f"MISSING profile {PROFILE_HOME}")
+        return 1
+
+    if args.dry_run:
+        for key, value in pairs:
+            print(f"hermes -p {PROFILE} config set {key} {render(value)!r}")
+        return 0
+
+    if args.check:
+        drift = []
+        for key, value in pairs:
+            have_raw = current(key)
+            if normalize(value) != normalize_reported(have_raw):
+                drift.append((key, render(value), have_raw.replace("\n", " ") or "<unset>"))
+        for key, want, have in drift:
+            print(f"DRIFT {key}: want {want}, have {have}")
+        print(f"{len(pairs) - len(drift)}/{len(pairs)} gateway settings match config/team-access.json")
+        return 1 if drift else 0
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    config_file = PROFILE_HOME / "config.yaml"
+    if config_file.is_file():
+        backup = PROFILE_HOME / f"config.yaml.pre-team-access.{stamp}"
+        shutil.copy2(config_file, backup)
+        print(f"backed up {backup}")
+
+    failures = 0
+    for key, value in pairs:
+        proc = hermes("config", "set", key, render(value))
+        if proc.returncode != 0:
+            failures += 1
+            print(f"FAILED {key}: {proc.stderr.strip() or proc.stdout.strip()}")
+        else:
+            print(f"set {key} = {render(value)}")
+
+    print()
+    if ready:
+        print("Slack secrets detected. Slack is enabled.")
+    else:
+        print(f"Slack stays disabled until these are set: {', '.join(missing)}")
+        print("The gateway and Clay scheduled work keep running in the meantime.")
+    print()
+    print("Add these to the NORTH profile .env yourself (this script never writes .env):")
+    print(f"  {PROFILE_HOME}/.env")
+    print()
+    for name in settings["secrets_required"]:
+        print(f"  {name}=<paste from the Slack app>")
+    for name, value in settings["env"].items():
+        print(f"  {name}={value}")
+    print()
+    print("Then: hermes -p north gateway restart")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

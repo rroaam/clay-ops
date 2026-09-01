@@ -1,0 +1,108 @@
+#!/bin/sh
+# Run the eight team-access scenarios through the real CLI against an
+# isolated ledger. Prints a transcript. Writes nothing to Slack.
+set -e
+cd "$(dirname "$0")/.."
+export CLAY_OPS_DB="acceptance/team-access.sqlite3"
+rm -f "runtime/$CLAY_OPS_DB"
+mkdir -p runtime/acceptance
+
+RYAN=U0BH7234V9R; ALEX=U0BJ6DUR2RF; JUSTIN=U0BHA0L3C85; DEVEN=U0BHB9CDL22
+STRANGER=U0NOTATEAMMEMBER; STUDIOS=C0BH6TA333M
+
+wid() { python3 -c "import json,sys;print(json.load(sys.stdin).get('work_item_id') or '')"; }
+reply() { python3 -c "import json,sys;print(json.load(sys.stdin)['reply'])"; }
+field() { python3 -c "import json,sys;print(json.load(sys.stdin)['$1'])"; }
+
+echo "======================================================================"
+echo " 1. Ryan asks a broad project question"
+echo "======================================================================"
+W=$(uv run clay-ops work receive --slack-user-id $RYAN --text "Where does the JoinClay landing page actually stand?" --surface dm --channel D0RYAN --thread 1756800001.0001 --capability ask | wid)
+echo "work item: $W  requester: ryan"
+uv run clay-ops work ack "$W" | reply
+uv run clay-ops work delegate "$W" --specialist SIGNAL --specialist FIELD --specialist PROOF > /dev/null
+uv run clay-ops work complete "$W" --state done --summary "The landing page is on a review branch and has not merged. Copy and spacing both cleared review." --artifact "https://github.com/claylife/clay-engine/tree/review/instrument-brand-delta-2026-08-26" | reply
+
+echo
+echo "======================================================================"
+echo " 2. Alex requests a product/design change"
+echo "======================================================================"
+W=$(uv run clay-ops work receive --slack-user-id $ALEX --text "Can we tighten the spacing on the purchase flow?" --surface channel --channel $STUDIOS --thread 1756800002.0002 --capability request_work | wid)
+echo "work item: $W  requester: alex"
+uv run clay-ops work ack "$W" | reply
+uv run clay-ops work delegate "$W" --specialist FRAME --specialist FORGE --specialist PROOF > /dev/null
+uv run clay-ops work complete "$W" --state ready_for_review --summary "Spacing is tightened on a review branch. Nothing is merged." --artifact "https://clay-preview.example/review/purchase-flow" | reply
+
+echo
+echo "======================================================================"
+echo " 3. Deven gives creative feedback"
+echo "======================================================================"
+W=$(uv run clay-ops work receive --slack-user-id $DEVEN --text "The hero image reads colder than the brand should." --surface channel --channel $STUDIOS --thread 1756800003.0003 --capability request_work | wid)
+echo "work item: $W  requester: deven"
+uv run clay-ops work ack "$W" | reply
+uv run clay-ops work delegate "$W" --specialist STUDIO --specialist VOICE > /dev/null
+uv run clay-ops work complete "$W" --state ready_for_review --summary "Two warmer directions are ready. Neither changes the locked product terms." --artifact "https://clay-preview.example/hero-warm-a" | reply
+
+echo
+echo "======================================================================"
+echo " 4. Justin asks for current status"
+echo "======================================================================"
+W=$(uv run clay-ops work receive --slack-user-id $JUSTIN --text "What's the current status?" --surface dm --channel D0JUSTIN --thread 1756800004.0004 --capability receive_status | wid)
+echo "work item: $W  requester: justin"
+uv run clay-ops work complete "$W" --state done --summary "Three items are open. Two are ready for review. Nothing is blocked on you." | reply
+
+echo
+echo "======================================================================"
+echo " 5. An unauthorized Slack user invokes NORTH"
+echo "======================================================================"
+uv run clay-ops work receive --slack-user-id $STRANGER --text "@NORTH deploy the site" --surface channel --channel $STUDIOS --thread 1756800005.0005 --capability request_work
+echo "-> no reply is sent, and no work item is created"
+
+echo
+echo "======================================================================"
+echo " 6. An authorized user requests a production deploy"
+echo "======================================================================"
+W=$(uv run clay-ops work receive --slack-user-id $ALEX --text "Ship the purchase flow fix to production." --surface channel --channel $STUDIOS --thread 1756800006.0006 --capability request_implementation | wid)
+echo "work item: $W  requester: alex"
+uv run clay-ops work ack "$W" | reply
+uv run clay-ops work delegate "$W" --specialist FORGE --specialist PROOF > /dev/null
+uv run clay-ops work gate "$W" --capability approve_production --summary "The fix is built, checked, and pushed to a review branch." --artifact "https://github.com/claylife/clay-engine/pull/example" | reply
+
+echo
+echo "======================================================================"
+echo " 7. Two people ask separate tasks at the same time"
+echo "======================================================================"
+A=$(uv run clay-ops work receive --slack-user-id $ALEX --text "Rework the pricing section." --surface channel --channel $STUDIOS --thread 1756800007.0007 --capability request_work | wid)
+D=$(uv run clay-ops work receive --slack-user-id $DEVEN --text "Draft the launch note." --surface channel --channel $STUDIOS --thread 1756800008.0008 --capability request_work | wid)
+uv run clay-ops work delegate "$A" --specialist FRAME > /dev/null
+uv run clay-ops work delegate "$D" --specialist VOICE > /dev/null
+echo "alex  -> $A"
+echo "deven -> $D"
+uv run clay-ops work list | python3 -c "
+import json,sys
+for w in json.load(sys.stdin):
+    print(f\"  {w['work_item_id']}  {w['requester']:7} thread={w['thread_id']:20} specialists={w['document']['specialists']}\")"
+
+echo
+echo "======================================================================"
+echo " 8. A follow-up lands inside the original thread"
+echo "======================================================================"
+F=$(uv run clay-ops work receive --slack-user-id $ALEX --text "Actually make the middle tier the default." --surface thread --channel $STUDIOS --thread 1756800007.0007 --capability request_work | wid)
+echo "follow-up resolved to: $F"
+[ "$F" = "$A" ] && echo "-> same work item as Alex's original request. One task, one thread." || { echo "FAIL: follow-up opened a new work item"; exit 1; }
+uv run clay-ops work show "$F" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+print('  history:', [e['event_type'] for e in d['history']])
+print('  requester still:', d['work_item']['requester'])"
+
+echo
+echo "======================================================================"
+echo " Ledger summary"
+echo "======================================================================"
+uv run clay-ops work list | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)
+print(f'  {len(rows)} work items recorded')
+for w in rows:
+    print(f\"  {w['requester']:7} {w['status']:16} {w['document']['requested_outcome'][:46]}\")"

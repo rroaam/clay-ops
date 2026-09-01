@@ -12,6 +12,8 @@ from .canon import CanonRegistry
 from .contracts import ContractError
 from .demo import DemoOrchestrator
 from .store import OperationalStore
+from .team_access import TeamAccess, slack_gateway_settings
+from .work_items import WorkItemLedger
 from .workflows.copy_review import CopyReviewWorkflow
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,7 +21,24 @@ RUNTIME = ROOT / "runtime"
 
 
 def _store():
+    # CLAY_OPS_DB lets an acceptance run use its own ledger instead of the
+    # operational one. It must still resolve inside the repository runtime
+    # root, so it cannot be used to write outside the confined path.
+    override = os.environ.get("CLAY_OPS_DB", "").strip()
+    if override:
+        path = (RUNTIME / override).resolve()
+        if not str(path).startswith(str(RUNTIME.resolve()) + "/"):
+            raise ValueError("CLAY_OPS_DB must resolve inside runtime/.")
+        return OperationalStore(path)
     return OperationalStore(RUNTIME / "clay-ops.sqlite3")
+
+
+def _access():
+    return TeamAccess(ROOT / "config/team-access.json")
+
+
+def _ledger(store):
+    return WorkItemLedger(_access(), store)
 
 
 def _print(value):
@@ -88,6 +107,49 @@ def build_parser():
     review.add_argument("--provenance-label", default="ryan-provided")
     show = run_sub.add_parser("show")
     show.add_argument("run_id")
+    team = commands.add_parser("team-access", help="Clay team access to NORTH")
+    team_sub = team.add_subparsers(dest="team_command", required=True)
+    team_sub.add_parser("list", help="Registered people, roles, and surfaces")
+    team_sub.add_parser("slack-config", help="Slack gateway settings derived from config/team-access.json")
+    check = team_sub.add_parser("check", help="Authorize one person for one capability")
+    check.add_argument("--slack-user-id", required=True)
+    check.add_argument("--capability", required=True)
+    check.add_argument("--surface", default="dm", choices=["dm", "channel", "thread"])
+    check.add_argument("--channel")
+
+    work = commands.add_parser("work", help="Work items opened from Slack")
+    work_sub = work.add_subparsers(dest="work_command", required=True)
+    receive = work_sub.add_parser("receive", help="Admit or refuse one inbound Slack message")
+    receive.add_argument("--slack-user-id", required=True)
+    receive.add_argument("--text", required=True)
+    receive.add_argument("--surface", default="dm", choices=["dm", "channel", "thread"])
+    receive.add_argument("--channel", default="")
+    receive.add_argument("--thread", default="")
+    receive.add_argument("--capability", default="ask")
+    ack = work_sub.add_parser("ack", help="Send the immediate acknowledgement")
+    ack.add_argument("work_item_id")
+    delegate = work_sub.add_parser("delegate", help="Record which specialists were used")
+    delegate.add_argument("work_item_id")
+    delegate.add_argument("--specialist", action="append", required=True)
+    complete = work_sub.add_parser("complete", help="Close a work item and render the Slack reply")
+    complete.add_argument("work_item_id")
+    complete.add_argument("--state", required=True, choices=["done", "ready_for_review", "needs_decision", "blocked"])
+    complete.add_argument("--summary", required=True)
+    complete.add_argument("--artifact", action="append", default=[])
+    complete.add_argument("--decision", action="append", default=[])
+    complete.add_argument("--next", action="append", default=[], dest="next_steps")
+    gate = work_sub.add_parser("gate", help="Finish the reversible work, then name the approver for the rest")
+    gate.add_argument("work_item_id")
+    gate.add_argument("--capability", required=True)
+    gate.add_argument("--summary", required=True)
+    gate.add_argument("--artifact", action="append", default=[])
+    gate.add_argument("--next", action="append", default=[], dest="next_steps")
+    listing = work_sub.add_parser("list")
+    listing.add_argument("--requester")
+    listing.add_argument("--status")
+    show_work = work_sub.add_parser("show")
+    show_work.add_argument("work_item_id")
+
     approval = commands.add_parser("approval")
     approval_sub = approval.add_subparsers(dest="approval_command", required=True)
     approval_sub.add_parser("list")
@@ -132,6 +194,57 @@ def main(argv=None):
             doc = json.loads((ROOT / "workflows/copy-review/v1.json").read_text(encoding="utf-8"))
             _print([{"workflow_id": doc["workflow_id"], "version": doc["version"], "purpose": doc["purpose"], "side_effect_mode": doc["side_effect_mode"]}])
             return 0
+        if args.command == "team-access":
+            access = _access()
+            if args.team_command == "list":
+                _print({
+                    "front_door": access.front_door,
+                    "people": [
+                        {"key": p.key, "name": p.display_name, "role": p.role, "slack_user_id": p.slack_user_id,
+                         "grants": access.roles[p.role]["grants"], "surfaces": access.roles[p.role]["surfaces"]}
+                        for p in access.people()
+                    ],
+                    "channels": access.channels(),
+                    "approvers": {k: access.approver_names(k) for k in access.approvers},
+                })
+                return 0
+            if args.team_command == "slack-config":
+                _print(slack_gateway_settings(access))
+                return 0
+            if args.team_command == "check":
+                decision = access.decide(args.slack_user_id, args.capability, surface=args.surface, channel_id=args.channel)
+                _print(decision.to_dict())
+                return 0 if decision.outcome != "deny" else 3
+
+        if args.command == "work":
+            store = _store()
+            ledger = _ledger(store)
+            if args.work_command == "receive":
+                _print(ledger.receive(slack_user_id=args.slack_user_id, text=args.text, surface=args.surface,
+                                      channel_id=args.channel, thread_id=args.thread, capability=args.capability))
+                return 0
+            if args.work_command == "ack":
+                _print({"reply": ledger.acknowledge(args.work_item_id)})
+                return 0
+            if args.work_command == "delegate":
+                _print(ledger.delegate(args.work_item_id, args.specialist))
+                return 0
+            if args.work_command == "complete":
+                _print(ledger.complete(args.work_item_id, args.state, args.summary, artifacts=args.artifact,
+                                       decisions=args.decision, next_steps=args.next_steps))
+                return 0
+            if args.work_command == "gate":
+                _print(ledger.complete_with_approval_gate(args.work_item_id, args.capability, args.summary,
+                                                          artifacts=args.artifact, next_steps=args.next_steps))
+                return 0
+            if args.work_command == "list":
+                _print(store.list_work_items(requester=args.requester, status=args.status))
+                return 0
+            if args.work_command == "show":
+                _print({"work_item": store.get_work_item(args.work_item_id),
+                        "history": store.list_work_item_events(args.work_item_id)})
+                return 0
+
         store = _store()
         if args.command == "run" and args.run_command == "copy-review":
             provenance = {"kind": "direct" if args.text is not None else "local-read-only-source", "label": args.provenance_label}

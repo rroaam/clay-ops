@@ -7,6 +7,11 @@ Built to: `docs/CLAY_BACKUP_STACK_OPERATOR.md`
 A local Hermes + n8n stack that runs the Clay bot roster on the Mac mini, in parallel with
 GrokBot. GrokBot was not modified.
 
+**Update 2026-09-01:** the team access layer is built on top of this stack. Ryan, Alex, Justin,
+and Deven reach the system through NORTH in Slack over Socket Mode, with no public inbound port.
+See `docs/TEAM_ACCESS_STATUS.md`. It is staged and tested; creating the Slack app is the one
+remaining human step.
+
 ---
 
 ## 1. Machine and environment inventory
@@ -276,7 +281,7 @@ with no output when there is nothing new.
 
 | Connector | What is needed | Impact |
 |---|---|---|
-| **Slack** | A Slack app for the Clay workspace with event subscriptions pointed at the local endpoint through a tunnel, or a Slack credential added in n8n | Workflow is live and testable; real Slack events do not arrive |
+| **Slack** | For the team access path this is now the only step left: create the NORTH Slack app from the committed manifest and paste two tokens. No tunnel is involved. See `docs/TEAM_ACCESS_STATUS.md` §10. The separate n8n signal-watch workflow still needs its own Slack credential in n8n. | NORTH is staged and disabled until its tokens exist; the n8n watch is live and testable but receives no real events |
 | **Email** | A Gmail or IMAP credential in n8n, then swap the webhook trigger for the mail trigger | Same: live and testable, no real mail |
 | **GitHub webhooks** | Register a webhook on `claylife/clay-engine` and `rroaam/clay-ops` against a reachable URL | `gh` CLI already has the scope to register one; blocked only on a public URL |
 | **Notion** | A Notion credential for the Clay workspace | Workflow ships **disabled** on purpose |
@@ -463,6 +468,11 @@ curl -s -X POST http://127.0.0.1:5678/webhook/clay/slack \
    **deliberately not run**: opening a tunnel publishes the local n8n to the internet, which is
    a security exposure and a human decision, not a reversible setup choice. The Slack half needs
    a credential regardless.
+
+   **Superseded for the team access path.** NORTH reaches Slack over Socket Mode, which dials
+   out and needs no public URL at all, so no tunnel is required to let the team use the system.
+   The tunnel question now only applies to the n8n webhook watches. See
+   `docs/TEAM_ACCESS_STATUS.md`.
 2. **No n8n API key issued yet.** The owner account exists, so one can be created in
    Settings → API. Without it, workflow changes go through the container CLI
    (`docker exec clay-n8n n8n import:workflow`), which cannot update a workflow in place —
@@ -489,10 +499,10 @@ curl -s -X POST http://127.0.0.1:5678/webhook/clay/slack \
 
 ## 15. Next recommended improvements
 
-1. **Connect one real event source.** Slack first, since `#clay-studios` is where the work
-   actually happens. Both halves are now within reach: FORGE has `pinggy-tunnel` for the public
-   URL, and the webhook endpoint is already live and tested. What is missing is your decision to
-   expose it and a Slack app credential.
+1. **Connect one real event source.** Done for the team access path, pending one human step.
+   NORTH now reaches `#clay-studios` and `#joinclay-mvp-landing-page` over Socket Mode with no
+   public URL and no tunnel. Create the Slack app from the committed manifest and paste the two
+   tokens: `docs/TEAM_ACCESS_STATUS.md` §10. The n8n webhook watches remain a separate question.
 2. **Fix `config/canon-registry.json`.** Seven failing tests and a failing `validate` all trace
    to one wrong path. Cheapest high-value fix on the list.
 3. **Decide what `main` means in `clay-engine`.** It is 8.5 weeks stale and missing the top
